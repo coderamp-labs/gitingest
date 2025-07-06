@@ -53,6 +53,8 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
 
     Attributes
     ----------
+    host : str | None
+        The host of the repository.
     user_name : str | None
         The username or owner of the repository.
     repo_name : str | None
@@ -86,6 +88,7 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
 
     """
 
+    host: str | None = None
     user_name: str | None = None
     repo_name: str | None = None
     local_path: Path

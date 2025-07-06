@@ -10,7 +10,7 @@ from gitingest.schemas import FileSystemNode, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
 
 if TYPE_CHECKING:
-    from gitingest.query_parser import IngestionQuery
+    from gitingest.schemas import IngestionQuery
 
 _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
     (1_000_000, "M"),
@@ -84,6 +84,8 @@ def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) 
 
     if query.commit:
         parts.append(f"Commit: {query.commit}")
+    elif query.tag:
+        parts.append(f"Tag: {query.tag}")
     elif query.branch and query.branch not in ("main", "master"):
         parts.append(f"Branch: {query.branch}")
 

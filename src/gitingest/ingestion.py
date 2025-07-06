@@ -11,7 +11,7 @@ from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStat
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 
 if TYPE_CHECKING:
-    from gitingest.query_parser import IngestionQuery
+    from gitingest.schemas import IngestionQuery
 
 
 def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:

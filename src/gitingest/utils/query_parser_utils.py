@@ -38,27 +38,6 @@ def _is_valid_git_commit_hash(commit: str) -> bool:
     return len(commit) == sha_hex_length and all(c in HEX_DIGITS for c in commit)
 
 
-def _is_valid_pattern(pattern: str) -> bool:
-    """Validate if the given pattern contains only valid characters.
-
-    This function checks if the pattern contains only alphanumeric characters or one
-    of the following allowed characters: dash ('-'), underscore ('_'), dot ('.'),
-    forward slash ('/'), plus ('+'), asterisk ('*'), or the at sign ('@').
-
-    Parameters
-    ----------
-    pattern : str
-        The pattern to validate.
-
-    Returns
-    -------
-    bool
-        ``True`` if the pattern is valid, otherwise ``False``.
-
-    """
-    return all(c.isalnum() or c in "-_./+*@" for c in pattern)
-
-
 def _validate_host(host: str) -> None:
     """Validate a hostname.
 

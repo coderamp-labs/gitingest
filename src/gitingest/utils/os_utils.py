@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-async def ensure_directory(path: Path) -> None:
+async def ensure_directory_exists_or_create(path: Path) -> None:
     """Ensure the directory exists, creating it if necessary.
 
     Parameters

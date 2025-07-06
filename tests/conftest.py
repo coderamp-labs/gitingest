@@ -7,6 +7,7 @@ to write ``.ipynb`` notebooks for testing notebook utilities.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict
 from unittest.mock import AsyncMock
@@ -22,6 +23,26 @@ WriteNotebookFunc = Callable[[str, Dict[str, Any]], Path]
 
 DEMO_URL = "https://github.com/user/repo"
 LOCAL_REPO_PATH = "/tmp/repo"
+DEMO_COMMIT = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+
+def get_ensure_git_installed_call_count() -> int:
+    """Get the number of calls made by ensure_git_installed based on platform.
+
+    On Windows, ensure_git_installed makes 2 calls:
+    1. git --version
+    2. git config core.longpaths
+
+    On other platforms, it makes 1 call:
+    1. git --version
+
+    Returns
+    -------
+    int
+        The number of calls made by ensure_git_installed
+
+    """
+    return 2 if sys.platform == "win32" else 1
 
 
 @pytest.fixture
@@ -168,11 +189,14 @@ def run_command_mock(mocker: MockerFixture) -> AsyncMock:
     The mocked function returns a dummy process whose ``communicate`` method yields generic
     ``stdout`` / ``stderr`` bytes. Tests can still access / tweak the mock via the fixture argument.
     """
-    mock_exec = mocker.patch("gitingest.clone.run_command", new_callable=AsyncMock)
+    mock = AsyncMock(side_effect=_fake_run_command)
+    mocker.patch("gitingest.utils.git_utils.run_command", mock)
+    mocker.patch("gitingest.clone.run_command", mock)
+    return mock
 
-    # Provide a default dummy process so most tests don't have to create one.
-    dummy_process = AsyncMock()
-    dummy_process.communicate.return_value = (b"output", b"error")
-    mock_exec.return_value = dummy_process
 
-    return mock_exec
+async def _fake_run_command(*args: str) -> tuple[bytes, bytes]:
+    if "ls-remote" in args:
+        # single match: <sha> <tab>refs/heads/main
+        return (f"{DEMO_COMMIT}\trefs/heads/main\n".encode(), b"")
+    return (b"output", b"error")
