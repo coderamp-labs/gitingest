@@ -17,7 +17,7 @@ def _is_safe_symlink(symlink_path: Path, base_path: Path) -> bool:
     Returns
     -------
     bool
-        Whether the symlink is “safe” (i.e., does not escape ``base_path``).
+        Whether the symlink is "safe" (i.e., does not escape ``base_path``).
 
     """
     # On Windows a non-symlink is immediately unsafe

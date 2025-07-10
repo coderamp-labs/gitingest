@@ -27,11 +27,11 @@ REF_CASES = [
 def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> None:
     """Assert that ``gitingest.ingest()`` emits a concise, 5-or-6-line summary.
 
-    - Non-“main” refs → 5 key/value pairs + blank line (6 total).
-    - “main” branch   → ref line omitted (5 total).
+    - Non-'main” refs → 5 key/value pairs + blank line (6 total).
+    - 'main” branch   → ref line omitted (5 total).
     - Required keys:
         - Repository
-        - ``ref_type`` (absent on “main”)
+        - ``ref_type`` (absent on 'main”)
         - File│Subpath (chosen by ``path_type``)
         - Lines│Files analyzed (chosen by ``path_type``)
         - Estimated tokens (positive integer)
@@ -55,7 +55,7 @@ def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> N
     expected_lines = 6 - int(is_main_branch)
     expected_parsed = 5 - int(is_main_branch)
 
-    summary, *_ = ingest(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
+    summary, _, _ = ingest(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
     lines = summary.splitlines()
     parsed = dict(line.split(": ", 1) for line in lines if ": " in line)
 

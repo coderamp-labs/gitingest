@@ -2,7 +2,7 @@ name: Publish to PyPI
 
 on:
   release:
-    types: [created] # Run when you click “Publish release”
+    types: [created] # Run when you click "Publish release"
   workflow_dispatch: # ... or run it manually from the Actions tab
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
           name: dist
           path: dist/
 
-# Publish to PyPI (only if “dist/” succeeded)
+# Publish to PyPI (only if "dist/"" succeeded)
   pypi-publish:
     needs: release-build
     runs-on: ubuntu-latest
