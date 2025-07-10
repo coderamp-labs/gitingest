@@ -256,13 +256,19 @@ async def _clone_repo_if_remote(query: IngestionQuery, *, token: str | None) -> 
         GitHub personal access token (PAT) for accessing private repositories.
 
     """
+    kwargs = {}
+    if sys.version_info >= (3, 12):
+        kwargs["onexc"] = _handle_remove_readonly
+    else:
+        kwargs["onerror"] = _handle_remove_readonly
+
     if query.url:
         clone_config = query.extract_clone_config()
         await clone_repo(clone_config, token=token)
         try:
             yield
         finally:
-            shutil.rmtree(query.local_path.parent, onerror=_handle_remove_readonly)
+            shutil.rmtree(query.local_path.parent, **kwargs)
     else:
         yield
 
@@ -270,7 +276,7 @@ async def _clone_repo_if_remote(query: IngestionQuery, *, token: str | None) -> 
 def _handle_remove_readonly(
     func: Callable,
     path: str,
-    exc_info: tuple[type[BaseException], BaseException, TracebackType],
+    exc_info: BaseException | tuple[type[BaseException], BaseException, TracebackType],
 ) -> None:
     """Handle permission errors raised by ``shutil.rmtree()``.
 
@@ -278,7 +284,12 @@ def _handle_remove_readonly(
     * Retries the original operation (``func``) once.
 
     """
-    exc = exc_info[1]
+    # 'onerror' passes a (type, value, tb) tuple; 'onexc' passes the exception
+    if isinstance(exc_info, tuple):  # 'onerror' (Python <3.12)
+        exc: BaseException = exc_info[1]
+    else:  # 'onexc' (Python 3.12+)
+        exc = exc_info
+
     # Handle only'Permission denied' and 'Operation not permitted'
     if not isinstance(exc, OSError) or exc.errno not in {errno.EACCES, errno.EPERM}:
         raise exc
