@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import shutil
+import stat
 import sys
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator, Callable
 from urllib.parse import urlparse
 
 from gitingest.clone import clone_repo
@@ -22,6 +24,8 @@ from gitingest.utils.pattern_utils import process_patterns
 from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
 
 if TYPE_CHECKING:
+    from types import TracebackType
+
     from gitingest.schemas import IngestionQuery
 
 
@@ -258,9 +262,30 @@ async def _clone_repo_if_remote(query: IngestionQuery, *, token: str | None) -> 
         try:
             yield
         finally:
-            shutil.rmtree(query.local_path.parent)
+            shutil.rmtree(query.local_path.parent, onerror=_handle_remove_readonly)
     else:
         yield
+
+
+def _handle_remove_readonly(
+    func: Callable,
+    path: str,
+    exc_info: tuple[type[BaseException], BaseException, TracebackType],
+) -> None:
+    """Handle permission errors raised by ``shutil.rmtree()``.
+
+    * Makes the target writable (removes the read-only attribute).
+    * Retries the original operation (``func``) once.
+
+    """
+    exc = exc_info[1]
+    # Handle only'Permission denied' and 'Operation not permitted'
+    if not isinstance(exc, OSError) or exc.errno not in {errno.EACCES, errno.EPERM}:
+        raise exc
+
+    # Make the target writable
+    Path(path).chmod(stat.S_IWRITE)
+    func(path)
 
 
 async def _write_output(tree: str, content: str, target: str | None) -> None:
