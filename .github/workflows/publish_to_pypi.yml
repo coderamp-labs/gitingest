@@ -38,7 +38,7 @@ jobs:
           name: dist
           path: dist/
 
-# Publish to PyPI (only if "dist/"" succeeded)
+# Publish to PyPI (only if "dist/" succeeded)
   pypi-publish:
     needs: release-build
     runs-on: ubuntu-latest
