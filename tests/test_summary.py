@@ -12,6 +12,7 @@ REPO = "pallets/flask"
 PATH_CASES = [
     ("tree", "/examples/celery"),
     ("blob", "/examples/celery/make_celery.py"),
+    ("blob", "/.gitignore"),
 ]
 
 REF_CASES = [
