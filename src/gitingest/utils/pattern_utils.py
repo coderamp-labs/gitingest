@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from typing import Iterable
 
-from gitingest.utils.exceptions import InvalidPatternError
 from gitingest.utils.ignore_patterns import DEFAULT_IGNORE_PATTERNS
+
+_PATTERN_SPLIT_RE = re.compile(r"[,\s]+")
 
 
 def process_patterns(
@@ -43,66 +45,29 @@ def process_patterns(
     return ignore_patterns_set, parsed_include
 
 
-def _parse_patterns(pattern: set[str] | str) -> set[str]:
-    """Parse and validate file/directory patterns for inclusion or exclusion.
-
-    Takes either a single pattern string or set of pattern strings and processes them into a normalized list.
-    Patterns are split on commas and spaces, validated for allowed characters, and normalized.
+def _parse_patterns(patterns: str | Iterable[str]) -> set[str]:
+    """Normalize a collection of file or directory patterns.
 
     Parameters
     ----------
-    pattern : set[str] | str
-        Pattern(s) to parse - either a single string or set of strings
+    patterns : str | Iterable[str]
+        One pattern string or an iterable of pattern strings. Each pattern may contain multiple comma- or
+        whitespace-separated sub-patterns, e.g. "src/*, tests *.md".
 
     Returns
     -------
     set[str]
-        A set of normalized patterns.
-
-    Raises
-    ------
-    InvalidPatternError
-        If any pattern contains invalid characters. Only alphanumeric characters,
-        dash (-), underscore (_), dot (.), forward slash (/), plus (+), and
-        asterisk (*) are allowed.
+        Normalized patterns with Windows back-slashes converted to forward-slashes and duplicates removed.
 
     """
-    patterns = pattern if isinstance(pattern, set) else {pattern}
+    # Treat a lone string as the iterable [string]
+    if isinstance(patterns, str):
+        patterns = [patterns]
 
-    parsed_patterns: set[str] = set()
-    for p in patterns:
-        parsed_patterns = parsed_patterns.union(set(re.split(",| ", p)))
-
-    # Remove empty string if present
-    parsed_patterns = parsed_patterns - {""}
-
-    # Normalize Windows paths to Unix-style paths
-    parsed_patterns = {p.replace("\\", "/") for p in parsed_patterns}
-
-    # Validate and normalize each pattern
-    for p in parsed_patterns:
-        if not _is_valid_pattern(p):
-            raise InvalidPatternError(p)
-
-    return parsed_patterns
-
-
-def _is_valid_pattern(pattern: str) -> bool:
-    """Validate if the given pattern contains only valid characters.
-
-    This function checks if the pattern contains only alphanumeric characters or one
-    of the following allowed characters: dash ('-'), underscore ('_'), dot ('.'),
-    forward slash ('/'), plus ('+'), asterisk ('*'), or the at sign ('@').
-
-    Parameters
-    ----------
-    pattern : str
-        The pattern to validate.
-
-    Returns
-    -------
-    bool
-        ``True`` if the pattern is valid, otherwise ``False``.
-
-    """
-    return all(c.isalnum() or c in "-_./+*@" for c in pattern)
+    # Flatten, split on commas/whitespace, strip empties, normalise slashes
+    return {
+        part.replace("\\", "/")
+        for pat in patterns
+        for part in _PATTERN_SPLIT_RE.split(pat.strip())
+        if part  # discard empty tokens
+    }
