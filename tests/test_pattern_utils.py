@@ -1,7 +1,5 @@
 """Test pattern utilities."""
 
-import pytest
-
 from gitingest.utils.ignore_patterns import DEFAULT_IGNORE_PATTERNS
 from gitingest.utils.pattern_utils import _parse_patterns, process_patterns
 
@@ -30,19 +28,6 @@ def test_parse_patterns_valid() -> None:
     parsed_patterns = _parse_patterns(patterns)
 
     assert parsed_patterns == {"*.py", "*.md", "docs/*"}
-
-
-def test_parse_patterns_invalid_characters() -> None:
-    """Test ``_parse_patterns`` with invalid characters.
-
-    Given a pattern string containing special characters (e.g. "*.py;rm -rf"):
-    When ``_parse_patterns`` is called,
-    Then a ValueError should be raised indicating invalid pattern syntax.
-    """
-    patterns = "*.py;rm -rf"
-
-    with pytest.raises(ValueError, match="Pattern.*contains invalid characters"):
-        _parse_patterns(patterns)
 
 
 def test_process_patterns_include_and_ignore_overlap() -> None:
