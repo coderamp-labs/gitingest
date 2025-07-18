@@ -172,8 +172,8 @@ function handleSuccessfulResponse(data) {
     // Show results section
     showResults();
 
-    // Store the ingest_id for download functionality
-    window.currentIngestId = data.ingest_id;
+    // Store the digest_url for download functionality
+    window.currentDigestUrl = data.digest_url;
 
     // Set plain text content for summary, tree, and content
     document.getElementById('result-summary').value = data.summary || '';
@@ -271,9 +271,9 @@ function copyFullDigest() {
 }
 
 function downloadFullDigest() {
-    // Check if we have an ingest_id
-    if (!window.currentIngestId) {
-        console.error('No ingest_id available for download');
+    // Check if we have a digest_url
+    if (!window.currentDigestUrl) {
+        console.error('No digest_url available for download');
 
         return;
     }
@@ -289,10 +289,10 @@ function downloadFullDigest() {
         Downloading...
     `;
 
-    // Create a download link to the server endpoint
+    // Create a download link using the digest_url
     const a = document.createElement('a');
 
-    a.href = `/api/download/file/${window.currentIngestId}`;
+    a.href = window.currentDigestUrl;
     a.download = 'digest.txt';
     document.body.appendChild(a);
     a.click();

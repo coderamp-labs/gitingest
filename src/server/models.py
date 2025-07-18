@@ -71,8 +71,8 @@ class IngestSuccessResponse(BaseModel):
         Short form of repository URL (user/repo).
     summary : str
         Summary of the ingestion process including token estimates.
-    ingest_id : str
-        Ingestion id used to download full context.
+    digest_url : str
+        URL to download the full digest content (either S3 URL or local download endpoint).
     tree : str
         File tree structure of the repository.
     content : str
@@ -89,7 +89,7 @@ class IngestSuccessResponse(BaseModel):
     repo_url: str = Field(..., description="Original repository URL")
     short_repo_url: str = Field(..., description="Short repository URL (user/repo)")
     summary: str = Field(..., description="Ingestion summary with token estimates")
-    ingest_id: str = Field(..., description="Ingestion id used to download full context")
+    digest_url: str = Field(..., description="URL to download the full digest content")
     tree: str = Field(..., description="File tree structure")
     content: str = Field(..., description="Processed file content")
     default_max_file_size: int = Field(..., description="File size slider position used")
