@@ -113,6 +113,7 @@ repos:
         files: ^src/
         additional_dependencies:
           [
+            boto3>=1.28.0,
             click>=8.0.0,
             'fastapi[standard]>=0.109.1',
             httpx,
@@ -138,6 +139,7 @@ repos:
           - --rcfile=tests/.pylintrc
         additional_dependencies:
           [
+            boto3>=1.28.0,
             click>=8.0.0,
             'fastapi[standard]>=0.109.1',
             httpx,

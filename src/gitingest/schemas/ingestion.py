@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path  # noqa: TC003 (typing-only-standard-library-import) needed for type checking (pydantic)
+from uuid import UUID  # noqa: TC003 (typing-only-standard-library-import) needed for type checking (pydantic)
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +28,7 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
         The URL of the repository.
     slug : str
         The slug of the repository.
-    id : str
+    id : UUID
         The ID of the repository.
     subpath : str
         The subpath to the repository or file (default: ``"/"``).
@@ -47,6 +48,8 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
         The patterns to include.
     include_submodules : bool
         Whether to include all Git submodules within the repository. (default: ``False``)
+    s3_url : str | None
+        The S3 URL where the digest is stored if S3 is enabled.
 
     """
 
@@ -56,7 +59,7 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
     local_path: Path
     url: str | None = None
     slug: str
-    id: str
+    id: UUID
     subpath: str = Field(default="/")
     type: str | None = None
     branch: str | None = None
@@ -66,6 +69,7 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
     ignore_patterns: set[str] = Field(default_factory=set)  # TODO: ssame type for ignore_* and include_* patterns
     include_patterns: set[str] | None = None
     include_submodules: bool = Field(default=False)
+    s3_url: str | None = None
 
     def extract_clone_config(self) -> CloneConfig:
         """Extract the relevant fields for the CloneConfig object.

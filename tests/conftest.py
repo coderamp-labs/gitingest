@@ -7,6 +7,7 @@ to write ``.ipynb`` notebooks for testing notebook utilities.
 from __future__ import annotations
 
 import json
+import uuid
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict
@@ -62,7 +63,7 @@ def sample_query() -> IngestionQuery:
         repo_name="test_repo",
         local_path=Path("/tmp/test_repo").resolve(),
         slug="test_user/test_repo",
-        id="id",
+        id=uuid.uuid4(),
         branch="main",
         max_file_size=1_000_000,
         ignore_patterns={"*.pyc", "__pycache__", ".git"},

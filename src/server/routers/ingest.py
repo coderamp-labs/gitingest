@@ -1,10 +1,14 @@
 """Ingest endpoint for the API."""
 
+from typing import Union
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from prometheus_client import Counter
 
 from gitingest.config import TMP_BASE_PATH
+from gitingest.utils.s3_utils import get_s3_url_for_ingest_id, is_s3_enabled
 from server.models import IngestRequest
 from server.routers_utils import COMMON_INGEST_RESPONSES, _perform_ingestion
 from server.server_config import MAX_DISPLAY_SIZE
@@ -39,7 +43,7 @@ async def api_ingest(
     response = await _perform_ingestion(
         input_text=ingest_request.input_text,
         max_file_size=ingest_request.max_file_size,
-        pattern_type=ingest_request.pattern_type,
+        pattern_type=ingest_request.pattern_type.value,
         pattern=ingest_request.pattern,
         token=ingest_request.token,
     )
@@ -90,21 +94,24 @@ async def api_ingest_get(
     return response
 
 
-@router.get("/api/download/file/{ingest_id}", response_class=FileResponse)
-async def download_ingest(ingest_id: str) -> FileResponse:
+@router.get("/api/download/file/{ingest_id}", response_model=None)
+async def download_ingest(
+    ingest_id: UUID,
+) -> Union[RedirectResponse, FileResponse]:  # noqa: FA100 (future-rewritable-type-annotation) (pydantic)
     """Download the first text file produced for an ingest ID.
 
     **This endpoint retrieves the first ``*.txt`` file produced during the ingestion process**
-    and returns it as a downloadable file. The file is streamed with media type ``text/plain``
-    and prompts the browser to download it.
+    and returns it as a downloadable file. If S3 is enabled and the file is stored in S3,
+    it redirects to the S3 URL. Otherwise, it serves the local file.
 
     **Parameters**
 
-    - **ingest_id** (`str`): Identifier that the ingest step emitted
+    - **ingest_id** (`UUID`): Identifier that the ingest step emitted
 
     **Returns**
 
-    - **FileResponse**: Streamed response with media type ``text/plain``
+    - **RedirectResponse**: Redirect to S3 URL if S3 is enabled and file exists in S3
+    - **FileResponse**: Streamed response with media type ``text/plain`` for local files
 
     **Raises**
 
@@ -112,8 +119,15 @@ async def download_ingest(ingest_id: str) -> FileResponse:
     - **HTTPException**: **403** - the process lacks permission to read the directory or file
 
     """
+    # Check if S3 is enabled and file exists in S3
+    if is_s3_enabled():
+        s3_url = get_s3_url_for_ingest_id(ingest_id)
+        if s3_url:
+            return RedirectResponse(url=s3_url, status_code=302)
+
+    # Fall back to local file serving
     # Normalize and validate the directory path
-    directory = (TMP_BASE_PATH / ingest_id).resolve()
+    directory = (TMP_BASE_PATH / str(ingest_id)).resolve()
     if not str(directory).startswith(str(TMP_BASE_PATH.resolve())):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Invalid ingest ID: {ingest_id!r}")
 

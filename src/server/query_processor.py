@@ -10,7 +10,10 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
+from gitingest.utils.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
+
+
 from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import Colors, log_slider_to_size
 
@@ -59,7 +62,6 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
-    query.host = cast("str", query.host)
     query.max_file_size = max_file_size
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
@@ -71,13 +73,36 @@ async def process_query(
 
     short_repo_url = f"{query.user_name}/{query.repo_name}"  # Sets the "<user>/<repo>" for the page title
 
+    # The commit hash should always be available at this point
+    if not query.commit:
+        raise RuntimeError("Unexpected error: no commit hash found")
+
     try:
         summary, tree, content = ingest_query(query)
 
-        # TODO: why are we writing the tree and content to a file here?
-        local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
-        with local_txt_file.open("w", encoding="utf-8") as f:
-            f.write(tree + "\n" + content)
+        # Prepare the digest content (tree + content)
+        digest_content = tree + "\n" + content
+
+        # Store digest based on S3 configuration
+        if is_s3_enabled():
+            # Upload to S3 instead of storing locally
+            s3_file_path = generate_s3_file_path(
+                source=query.url,
+                user_name=cast("str", query.user_name),
+                repo_name=cast("str", query.repo_name),
+                branch=query.branch,
+                commit=query.commit,
+                include_patterns=query.include_patterns,
+                ignore_patterns=query.ignore_patterns,
+            )
+            s3_url = upload_to_s3(content=digest_content, s3_file_path=s3_file_path, ingest_id=query.id)
+            # Store S3 URL in query for later use
+            query.s3_url = s3_url
+        else:
+            # Store locally
+            local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
+            with local_txt_file.open("w", encoding="utf-8") as f:
+                f.write(digest_content)
 
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
@@ -101,7 +126,7 @@ async def process_query(
         repo_url=input_text,
         short_repo_url=short_repo_url,
         summary=summary,
-        ingest_id=query.id,
+        ingest_id=str(query.id),
         tree=tree,
         content=content,
         default_max_file_size=slider_position,
