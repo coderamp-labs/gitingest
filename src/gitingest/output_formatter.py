@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import TYPE_CHECKING
 
+import requests.exceptions
 import tiktoken
 
 from gitingest.schemas import FileSystemNode, FileSystemNodeType
@@ -188,6 +190,9 @@ def _format_token_count(text: str) -> str | None:
         total_tokens = len(encoding.encode(text, disallowed_special=()))
     except (ValueError, UnicodeEncodeError) as exc:
         print(exc)
+        return None
+    except (requests.exceptions.RequestException, ssl.SSLError):
+        # If network errors, silently skip token count estimation instead of erroring out
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:
