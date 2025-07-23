@@ -15,3 +15,8 @@ updates:
     directory: "/"
     schedule: { interval: "weekly" }
     labels: [ "dependencies", "gh-actions" ]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
