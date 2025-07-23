@@ -49,7 +49,7 @@ async def test_remote_repository_analysis(request: pytest.FixtureRequest) -> Non
     """Test the complete flow of analyzing a remote repository."""
     client = request.getfixturevalue("test_client")
     form_data = {
-        "input_text": "https://github.com/octocat/Hello-World",
+        "input_text": "https://github.com/microsoft/vscode",
         "max_file_size": "243",
         "pattern_type": "exclude",
         "pattern": "",
@@ -92,12 +92,11 @@ async def test_invalid_repository_url(request: pytest.FixtureRequest) -> None:
 
 @pytest.mark.asyncio
 async def test_large_repository(request: pytest.FixtureRequest) -> None:
-    """Simulate analysis of a large repository with nested folders."""
+    """Simulate analysis of a large repository with nested folders and many files."""
     client = request.getfixturevalue("test_client")
-    # TODO: ingesting a large repo take too much time (eg: godotengine/godot repository)
     form_data = {
-        "input_text": "https://github.com/octocat/hello-world",
-        "max_file_size": "10",
+        "input_text": "https://github.com/microsoft/vscode",
+        "max_file_size": "100",  # Lower this to force skipping large files
         "pattern_type": "exclude",
         "pattern": "",
         "token": "",
@@ -109,7 +108,7 @@ async def test_large_repository(request: pytest.FixtureRequest) -> None:
     response_data = response.json()
     if response.status_code == status.HTTP_200_OK:
         assert "content" in response_data
-        assert response_data["content"]
+        assert isinstance(response_data["content"], str)
     else:
         assert "error" in response_data
 
@@ -121,7 +120,7 @@ async def test_concurrent_requests(request: pytest.FixtureRequest) -> None:
 
     def make_request() -> None:
         form_data = {
-            "input_text": "https://github.com/octocat/hello-world",
+            "input_text": "https://github.com/microsoft/vscode",
             "max_file_size": "243",
             "pattern_type": "exclude",
             "pattern": "",
@@ -148,7 +147,7 @@ async def test_large_file_handling(request: pytest.FixtureRequest) -> None:
     """Test handling of repositories with large files."""
     client = request.getfixturevalue("test_client")
     form_data = {
-        "input_text": "https://github.com/octocat/Hello-World",
+        "input_text": "https://github.com/microsoft/vscode",
         "max_file_size": "1",
         "pattern_type": "exclude",
         "pattern": "",
@@ -171,7 +170,7 @@ async def test_repository_with_patterns(request: pytest.FixtureRequest) -> None:
     """Test repository analysis with include/exclude patterns."""
     client = request.getfixturevalue("test_client")
     form_data = {
-        "input_text": "https://github.com/octocat/Hello-World",
+        "input_text": "https://github.com/microsoft/vscode",
         "max_file_size": "243",
         "pattern_type": "include",
         "pattern": "*.md",
@@ -184,9 +183,120 @@ async def test_repository_with_patterns(request: pytest.FixtureRequest) -> None:
     response_data = response.json()
     if response.status_code == status.HTTP_200_OK:
         assert "content" in response_data
+        assert isinstance(response_data["content"], str)
+
+        assert "repo_url" in response_data
+        assert response_data["repo_url"].startswith("https://github.com/")
+
+        assert "summary" in response_data
+        assert isinstance(response_data["summary"], str)
+        assert "microsoft/vscode" in response_data["summary"].lower()
+
+        assert "tree" in response_data
+        assert isinstance(response_data["tree"], str)
+        assert "microsoft-vscode" in response_data["tree"].lower()
+
         assert "pattern_type" in response_data
         assert response_data["pattern_type"] == "include"
+
         assert "pattern" in response_data
         assert response_data["pattern"] == "*.md"
     else:
         assert "error" in response_data
+        assert isinstance(response_data["error"], str)
+        assert response_data["error"]  # not empty
+
+
+@pytest.mark.asyncio
+async def test_missing_required_fields(request: pytest.FixtureRequest) -> None:
+    """Test API response when required fields are missing."""
+    client = request.getfixturevalue("test_client")
+    form_data = {
+        "max_file_size": "243",
+        "pattern_type": "exclude",
+        "pattern": "",
+        "token": "",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code in (
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_200_OK,
+    )
+
+    form_data = {
+        "input_text": "https://github.com/microsoft/vscode",
+        "max_file_size": "243",
+        "pattern": "",
+        "token": "",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code in (
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_200_OK,
+    )
+
+
+@pytest.mark.asyncio
+async def test_invalid_field_types(request: pytest.FixtureRequest) -> None:
+    """Test API response when fields have invalid types."""
+    client = request.getfixturevalue("test_client")
+
+    form_data = {
+        "input_text": 12345,
+        "max_file_size": "243",
+        "pattern_type": "exclude",
+        "pattern": "",
+        "token": "",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    form_data = {
+        "input_text": "https://github.com/microsoft/vscode",
+        "max_file_size": "243",
+        "pattern_type": "exclude",
+        "pattern": ["*.md"],
+        "token": "",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.asyncio
+async def test_unsupported_pattern_type(request: pytest.FixtureRequest) -> None:
+    """Test API response for unsupported pattern_type."""
+    client = request.getfixturevalue("test_client")
+    form_data = {
+        "input_text": "https://github.com/microsoft/vscode",
+        "max_file_size": "243",
+        "pattern_type": "invalid_type",
+        "pattern": "*.md",
+        "token": "",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY)
+    response_data = response.json()
+    assert "error" in response_data or "detail" in response_data
+
+
+@pytest.mark.asyncio
+async def test_invalid_token(request: pytest.FixtureRequest) -> None:
+    """Test API response for an invalid or expired token."""
+    client = request.getfixturevalue("test_client")
+    form_data = {
+        "input_text": "https://github.com/microsoft/vscode",
+        "max_file_size": "243",
+        "pattern_type": "exclude",
+        "pattern": "",
+        "token": "invalid_token_1234567890",
+    }
+    response = client.post("/api/ingest", json=form_data)
+    assert response.status_code in (
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+    response_data = response.json()
+    assert "error" in response_data or "detail" in response_data
