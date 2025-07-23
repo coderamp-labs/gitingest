@@ -5,17 +5,17 @@ from __future__ import annotations
 import uuid
 import warnings
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from typing import Literal
 
 from gitingest.config import TMP_BASE_PATH
 from gitingest.schemas import IngestionQuery
-from gitingest.utils.git_utils import check_repo_exists, fetch_remote_branches_or_tags
+from gitingest.utils.git_utils import fetch_remote_branches_or_tags, resolve_commit
 from gitingest.utils.query_parser_utils import (
-    KNOWN_GIT_HOSTS,
+    PathKind,
+    _fallback_to_root,
     _get_user_and_repo_from_path,
     _is_valid_git_commit_hash,
-    _validate_host,
-    _validate_url_scheme,
+    _normalise_source,
 )
 
 
@@ -40,80 +40,59 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
         A dictionary containing the parsed details of the repository.
 
     """
-    source = unquote(source)
-
-    # Attempt to parse
-    parsed_url = urlparse(source)
-
-    if parsed_url.scheme:
-        _validate_url_scheme(parsed_url.scheme)
-        _validate_host(parsed_url.netloc.lower())
-
-    else:  # Will be of the form 'host/user/repo' or 'user/repo'
-        tmp_host = source.split("/")[0].lower()
-        if "." in tmp_host:
-            _validate_host(tmp_host)
-        else:
-            # No scheme, no domain => user typed "user/repo", so we'll guess the domain.
-            host = await try_domains_for_user_and_repo(*_get_user_and_repo_from_path(source), token=token)
-            source = f"{host}/{source}"
-
-        source = "https://" + source
-        parsed_url = urlparse(source)
-
-    host = parsed_url.netloc.lower()
-    user_name, repo_name = _get_user_and_repo_from_path(parsed_url.path)
+    parsed_url = await _normalise_source(source, token=token)
+    host = parsed_url.netloc
+    user, repo = _get_user_and_repo_from_path(parsed_url.path)
 
     _id = str(uuid.uuid4())
-    slug = f"{user_name}-{repo_name}"
+    slug = f"{user}-{repo}"
     local_path = TMP_BASE_PATH / _id / slug
-    url = f"https://{host}/{user_name}/{repo_name}"
+    url = f"https://{host}/{user}/{repo}"
 
     query = IngestionQuery(
         host=host,
-        user_name=user_name,
-        repo_name=repo_name,
+        user_name=user,
+        repo_name=repo,
         url=url,
         local_path=local_path,
         slug=slug,
         id=_id,
     )
 
-    remaining_parts = parsed_url.path.strip("/").split("/")[2:]
+    path_parts = parsed_url.path.strip("/").split("/")[2:]
 
-    if not remaining_parts:
-        return query
+    # main branch
+    if not path_parts:
+        return await _fallback_to_root(query, token=token)
 
-    possible_type = remaining_parts.pop(0)  # e.g. 'issues', 'pull', 'tree', 'blob'
+    kind = PathKind(path_parts.pop(0))  # may raise ValueError
+    query.type = kind
+
+    # TODO: Handle issues and pull requests
+    if query.type in {PathKind.ISSUES, PathKind.PULL}:
+        msg = f"Warning: Issues and pull requests are not yet supported: {url}. Returning repository root."
+        return await _fallback_to_root(query, token=token, warn_msg=msg)
 
     # If no extra path parts, just return
-    if not remaining_parts:
-        return query
+    if not path_parts:
+        msg = f"Warning: No extra path parts: {url}. Returning repository root."
+        return await _fallback_to_root(query, token=token, warn_msg=msg)
 
-    # If this is an issues page or pull requests, return early without processing subpath
-    # TODO: Handle issues and pull requests
-    if remaining_parts and possible_type in {"issues", "pull"}:
-        msg = f"Warning: Issues and pull requests are not yet supported: {url}. Returning repository root."
-        warnings.warn(msg, RuntimeWarning, stacklevel=2)
-        return query
-
-    if possible_type not in {"tree", "blob"}:
+    if query.type not in {PathKind.TREE, PathKind.BLOB}:
         # TODO: Handle other types
-        msg = f"Warning: Type '{possible_type}' is not yet supported: {url}. Returning repository root."
-        warnings.warn(msg, RuntimeWarning, stacklevel=2)
-        return query
-
-    query.type = possible_type
+        msg = f"Warning: Type '{query.type}' is not yet supported: {url}. Returning repository root."
+        return await _fallback_to_root(query, token=token, warn_msg=msg)
 
     # Commit, branch, or tag
-    commit_or_branch_or_tag = remaining_parts[0]
-    if _is_valid_git_commit_hash(commit_or_branch_or_tag):  # Commit
-        query.commit = commit_or_branch_or_tag
-        remaining_parts.pop(0)  # Consume the commit hash
+    ref = path_parts[0]
+
+    if _is_valid_git_commit_hash(ref):  # Commit
+        query.commit = ref
+        path_parts.pop(0)  # Consume the commit hash
     else:  # Branch or tag
         # Try to resolve a tag
         query.tag = await _configure_branch_or_tag(
-            remaining_parts,
+            path_parts,
             url=url,
             ref_type="tags",
             token=token,
@@ -122,15 +101,17 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
         # If no tag found, try to resolve a branch
         if not query.tag:
             query.branch = await _configure_branch_or_tag(
-                remaining_parts,
+                path_parts,
                 url=url,
                 ref_type="branches",
                 token=token,
             )
 
     # Only configure subpath if we have identified a commit, branch, or tag.
-    if remaining_parts and (query.commit or query.branch or query.tag):
-        query.subpath += "/".join(remaining_parts)
+    if path_parts and (query.commit or query.branch or query.tag):
+        query.subpath += "/".join(path_parts)
+
+    query.commit = await resolve_commit(query.extract_clone_config(), token=token)
 
     return query
 
@@ -155,21 +136,21 @@ def parse_local_dir_path(path_str: str) -> IngestionQuery:
 
 
 async def _configure_branch_or_tag(
-    remaining_parts: list[str],
+    path_parts: list[str],
     *,
     url: str,
-    ref_type: str,
+    ref_type: Literal["branches", "tags"],
     token: str | None = None,
 ) -> str | None:
     """Configure the branch or tag based on the remaining parts of the URL.
 
     Parameters
     ----------
-    remaining_parts : list[str]
-        The remaining parts of the URL path.
+    path_parts : list[str]
+        The path parts of the URL.
     url : str
         The URL of the repository.
-    ref_type : str
+    ref_type : Literal["branches", "tags"]
         The type of reference to configure. Can be "branches" or "tags".
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
@@ -179,16 +160,7 @@ async def _configure_branch_or_tag(
     str | None
         The branch or tag name if found, otherwise ``None``.
 
-    Raises
-    ------
-    ValueError
-        If the ``ref_type`` parameter is not "branches" or "tags".
-
     """
-    if ref_type not in ("branches", "tags"):
-        msg = f"Invalid reference type: {ref_type}"
-        raise ValueError(msg)
-
     _ref_type = "tags" if ref_type == "tags" else "branches"
 
     try:
@@ -198,50 +170,18 @@ async def _configure_branch_or_tag(
         # If remote discovery fails, we optimistically treat the first path segment as the branch/tag.
         msg = f"Warning: Failed to fetch {_ref_type}: {exc}"
         warnings.warn(msg, RuntimeWarning, stacklevel=2)
-        return remaining_parts.pop(0) if remaining_parts else None
+        return path_parts.pop(0) if path_parts else None
 
     # Iterate over the path components and try to find a matching branch/tag
     candidate_parts: list[str] = []
 
-    for part in remaining_parts:
+    for part in path_parts:
         candidate_parts.append(part)
         candidate_name = "/".join(candidate_parts)
         if candidate_name in branches_or_tags:
             # We found a match — now consume exactly the parts that form the branch/tag
-            del remaining_parts[: len(candidate_parts)]
+            del path_parts[: len(candidate_parts)]
             return candidate_name
 
-    # No match found; leave remaining_parts intact
+    # No match found; leave path_parts intact
     return None
-
-
-async def try_domains_for_user_and_repo(user_name: str, repo_name: str, token: str | None = None) -> str:
-    """Attempt to find a valid repository host for the given ``user_name`` and ``repo_name``.
-
-    Parameters
-    ----------
-    user_name : str
-        The username or owner of the repository.
-    repo_name : str
-        The name of the repository.
-    token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
-
-    Returns
-    -------
-    str
-        The domain of the valid repository host.
-
-    Raises
-    ------
-    ValueError
-        If no valid repository host is found for the given ``user_name`` and ``repo_name``.
-
-    """
-    for domain in KNOWN_GIT_HOSTS:
-        candidate = f"https://{domain}/{user_name}/{repo_name}"
-        if await check_repo_exists(candidate, token=token if domain.startswith("github.") else None):
-            return domain
-
-    msg = f"Could not find a valid repository host for '{user_name}/{repo_name}'."
-    raise ValueError(msg)

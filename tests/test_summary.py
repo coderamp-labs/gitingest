@@ -53,8 +53,8 @@ def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> N
     """
     is_main_branch = ref == "main"
     is_blob = path_type == "blob"
-    expected_lines = 6 - int(is_main_branch)
-    expected_parsed = 5 - int(is_main_branch)
+    expected_lines = 7 - int(is_main_branch) - int(ref_type == "Commit")
+    expected_parsed = expected_lines - 1
 
     summary, _, _ = ingest(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
     lines = summary.splitlines()

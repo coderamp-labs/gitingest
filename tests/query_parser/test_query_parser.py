@@ -4,6 +4,7 @@ These tests cover URL parsing, pattern parsing, and handling of branches/subpath
 paths.
 """
 
+# pylint: disable=too-many-arguments, too-many-positional-arguments
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,9 +13,12 @@ from typing import TYPE_CHECKING, Callable
 import pytest
 
 from gitingest.query_parser import parse_local_dir_path, parse_remote_repo
+from gitingest.utils.query_parser_utils import _is_valid_git_commit_hash
 from tests.conftest import DEMO_URL
 
 if TYPE_CHECKING:
+    from unittest.mock import AsyncMock
+
     from gitingest.schemas import IngestionQuery
 
 
@@ -35,22 +39,22 @@ URLS_HTTP: list[str] = [url.replace("https://", "http://") for url in URLS_HTTPS
 
 @pytest.mark.parametrize("url", URLS_HTTPS, ids=lambda u: u)
 @pytest.mark.asyncio
-async def test_parse_url_valid_https(url: str) -> None:
+async def test_parse_url_valid_https(url: str, stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Valid HTTPS URLs parse correctly and ``query.url`` equals the input."""
-    query = await _assert_basic_repo_fields(url)
+    query = await _assert_basic_repo_fields(url, stub_resolve_sha["head"])
 
     assert query.url == url  # HTTPS: canonical URL should equal input
 
 
 @pytest.mark.parametrize("url", URLS_HTTP, ids=lambda u: u)
 @pytest.mark.asyncio
-async def test_parse_url_valid_http(url: str) -> None:
+async def test_parse_url_valid_http(url: str, stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Valid HTTP URLs parse correctly (slug check only)."""
-    await _assert_basic_repo_fields(url)
+    await _assert_basic_repo_fields(url, stub_resolve_sha["head"])
 
 
 @pytest.mark.asyncio
-async def test_parse_url_invalid() -> None:
+async def test_parse_url_invalid(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with an invalid URL.
 
     Given an HTTPS URL lacking a repository structure (e.g., "https://github.com"),
@@ -62,10 +66,12 @@ async def test_parse_url_invalid() -> None:
     with pytest.raises(ValueError, match="Invalid repository URL"):
         await parse_remote_repo(url)
 
+    stub_resolve_sha["head"].assert_not_awaited()
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("url", [DEMO_URL, "https://gitlab.com/user/repo"])
-async def test_parse_query_basic(url: str) -> None:
+async def test_parse_query_basic(url: str, stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with a basic valid repository URL.
 
     Given an HTTPS URL:
@@ -74,13 +80,14 @@ async def test_parse_query_basic(url: str) -> None:
     """
     query = await parse_remote_repo(url)
 
+    stub_resolve_sha["head"].assert_awaited_once()
     assert query.user_name == "user"
     assert query.repo_name == "repo"
     assert query.url == url
 
 
 @pytest.mark.asyncio
-async def test_parse_query_mixed_case() -> None:
+async def test_parse_query_mixed_case(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with mixed-case URLs.
 
     Given a URL with mixed-case parts (e.g. "Https://GitHub.COM/UsEr/rEpO"):
@@ -90,12 +97,16 @@ async def test_parse_query_mixed_case() -> None:
     url = "Https://GitHub.COM/UsEr/rEpO"
     query = await parse_remote_repo(url)
 
+    stub_resolve_sha["head"].assert_awaited_once()
     assert query.user_name == "user"
     assert query.repo_name == "repo"
 
 
 @pytest.mark.asyncio
-async def test_parse_url_with_subpaths(stub_branches: Callable[[list[str]], None]) -> None:
+async def test_parse_url_with_subpaths(
+    stub_branches: Callable[[list[str]], None],
+    stub_resolve_sha: dict[str, AsyncMock],
+) -> None:
     """Test ``parse_remote_repo`` with a URL containing branch and subpath.
 
     Given a URL referencing a branch ("main") and a subdir ("subdir/file"):
@@ -106,7 +117,7 @@ async def test_parse_url_with_subpaths(stub_branches: Callable[[list[str]], None
 
     stub_branches(["main", "dev", "feature-branch"])
 
-    query = await _assert_basic_repo_fields(url)
+    query = await _assert_basic_repo_fields(url, stub_resolve_sha["ref"])
 
     assert query.user_name == "user"
     assert query.repo_name == "repo"
@@ -115,7 +126,7 @@ async def test_parse_url_with_subpaths(stub_branches: Callable[[list[str]], None
 
 
 @pytest.mark.asyncio
-async def test_parse_url_invalid_repo_structure() -> None:
+async def test_parse_url_invalid_repo_structure(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with a URL missing a repository name.
 
     Given a URL like "https://github.com/user":
@@ -126,6 +137,8 @@ async def test_parse_url_invalid_repo_structure() -> None:
 
     with pytest.raises(ValueError, match="Invalid repository URL"):
         await parse_remote_repo(url)
+
+    stub_resolve_sha["head"].assert_not_awaited()
 
 
 async def test_parse_local_dir_path_local_path() -> None:
@@ -160,7 +173,7 @@ async def test_parse_local_dir_path_relative_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_parse_remote_repo_empty_source() -> None:
+async def test_parse_remote_repo_empty_source(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with an empty string.
 
     Given an empty source string:
@@ -172,20 +185,23 @@ async def test_parse_remote_repo_empty_source() -> None:
     with pytest.raises(ValueError, match="Invalid repository URL"):
         await parse_remote_repo(url)
 
+    stub_resolve_sha["head"].assert_not_awaited()
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("path", "expected_branch", "expected_commit"),
+    ("path", "expected_branch", "mock_name"),
     [
-        ("/tree/main", "main", None),
-        ("/tree/abcd1234abcd1234abcd1234abcd1234abcd1234", None, "abcd1234abcd1234abcd1234abcd1234abcd1234"),
+        ("/tree/main", "main", "ref"),
+        ("/tree/abcd1234abcd1234abcd1234abcd1234abcd1234", None, "ref"),
     ],
 )
 async def test_parse_url_branch_and_commit_distinction(
     path: str,
     expected_branch: str,
-    expected_commit: str,
     stub_branches: Callable[[list[str]], None],
+    stub_resolve_sha: dict[str, AsyncMock],
+    mock_name: str,
 ) -> None:
     """Test ``parse_remote_repo`` distinguishing branch vs. commit hash.
 
@@ -196,10 +212,11 @@ async def test_parse_url_branch_and_commit_distinction(
     stub_branches(["main", "dev", "feature-branch"])
 
     url = DEMO_URL + path
-    query = await _assert_basic_repo_fields(url)
+    query = await _assert_basic_repo_fields(url, stub_resolve_sha[mock_name])
 
     assert query.branch == expected_branch
-    assert query.commit == expected_commit
+    assert query.commit is not None
+    assert _is_valid_git_commit_hash(query.commit)
 
 
 async def test_parse_local_dir_path_uuid_uniqueness() -> None:
@@ -217,7 +234,7 @@ async def test_parse_local_dir_path_uuid_uniqueness() -> None:
 
 
 @pytest.mark.asyncio
-async def test_parse_url_with_query_and_fragment() -> None:
+async def test_parse_url_with_query_and_fragment(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with query parameters and a fragment.
 
     Given a URL like "https://github.com/user/repo?arg=value#fragment":
@@ -227,13 +244,14 @@ async def test_parse_url_with_query_and_fragment() -> None:
     url = DEMO_URL + "?arg=value#fragment"
     query = await parse_remote_repo(url)
 
+    stub_resolve_sha["head"].assert_awaited_once()
     assert query.user_name == "user"
     assert query.repo_name == "repo"
     assert query.url == DEMO_URL  # URL should be cleaned
 
 
 @pytest.mark.asyncio
-async def test_parse_url_unsupported_host() -> None:
+async def test_parse_url_unsupported_host(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with an unsupported host.
 
     Given "https://only-domain.com":
@@ -244,6 +262,8 @@ async def test_parse_url_unsupported_host() -> None:
 
     with pytest.raises(ValueError, match="Unknown domain 'only-domain.com' in URL"):
         await parse_remote_repo(url)
+
+    stub_resolve_sha["head"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -264,20 +284,21 @@ async def test_parse_query_with_branch() -> None:
     assert query.id is not None
     assert query.subpath == "/.github/ISSUE_TEMPLATE/documentation_improvement.yaml"
     assert query.branch == "2.2.x"
-    assert query.commit is None
+    assert query.commit is not None
+    assert _is_valid_git_commit_hash(query.commit)
     assert query.type == "blob"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("path", "expected_branch", "expected_subpath"),
+    ("path", "expected_branch", "expected_subpath", "mock_name"),
     [
-        ("/tree/feature/fix1/src", "feature/fix1", "/src"),
-        ("/tree/main/src", "main", "/src"),
-        ("", None, "/"),
-        ("/tree/nonexistent-branch/src", None, "/"),
-        ("/tree/fix", "fix", "/"),
-        ("/blob/fix/page.html", "fix", "/page.html"),
+        ("/tree/feature/fix1/src", "feature/fix1", "/src", "ref"),
+        ("/tree/main/src", "main", "/src", "ref"),
+        ("", None, "/", "head"),
+        ("/tree/nonexistent-branch/src", None, "/", "ref"),
+        ("/tree/fix", "fix", "/", "ref"),
+        ("/blob/fix/page.html", "fix", "/page.html", "ref"),
     ],
 )
 async def test_parse_repo_source_with_various_url_patterns(
@@ -285,6 +306,8 @@ async def test_parse_repo_source_with_various_url_patterns(
     expected_branch: str | None,
     expected_subpath: str,
     stub_branches: Callable[[list[str]], None],
+    stub_resolve_sha: dict[str, AsyncMock],
+    mock_name: str,
 ) -> None:
     """Test ``parse_remote_repo`` with various GitHub-style URL permutations.
 
@@ -297,16 +320,24 @@ async def test_parse_repo_source_with_various_url_patterns(
     stub_branches(["feature/fix1", "main", "feature-branch", "fix"])
 
     url = DEMO_URL + path
-    query = await _assert_basic_repo_fields(url)
+    query = await _assert_basic_repo_fields(url, stub_resolve_sha[mock_name])
 
     assert query.branch == expected_branch
     assert query.subpath == expected_subpath
 
 
 @pytest.mark.asyncio
-async def _assert_basic_repo_fields(url: str) -> IngestionQuery:
+async def _assert_basic_repo_fields(url: str, sha_mock: AsyncMock) -> IngestionQuery:
     """Run ``parse_remote_repo`` and assert user, repo and slug are parsed."""
     query = await parse_remote_repo(url)
+
+    assert query.commit is not None
+    assert _is_valid_git_commit_hash(query.commit)
+
+    if query.commit in url:
+        sha_mock.assert_not_awaited()
+    else:
+        sha_mock.assert_awaited_once()
 
     assert query.user_name == "user"
     assert query.repo_name == "repo"

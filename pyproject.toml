@@ -6,17 +6,14 @@ readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
 dependencies = [
     "click>=8.0.0",
-    "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
     "httpx",
     "pathspec>=0.12.1",
     "pydantic",
     "python-dotenv",
-    "slowapi",
     "starlette>=0.40.0",  # Minimum safe release (https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw)
+    "strenum; python_version < '3.11'",
     "tiktoken>=0.7.0",  # Support for o200k_base encoding
     "typing_extensions>= 4.0.0; python_version < '3.10'",
-    "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
-    "prometheus-client",
 ]
 
 license = {file = "LICENSE"}
@@ -44,6 +41,14 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "pytest-mock",
+]
+
+server = [
+    "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
+    "prometheus-client",
+    "sentry-sdk[fastapi]",
+    "slowapi",
+    "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
 ]
 
 [project.scripts]

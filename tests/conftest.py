@@ -158,14 +158,37 @@ def write_notebook(tmp_path: Path) -> WriteNotebookFunc:
 
 
 @pytest.fixture
+def stub_resolve_sha(mocker: MockerFixture) -> dict[str, AsyncMock]:
+    """Patch *both* async helpers that hit the network.
+
+    Include this fixture *only* in tests that should stay offline.
+    """
+    head_mock = mocker.patch(
+        "gitingest.utils.query_parser_utils._resolve_ref_to_sha",
+        new_callable=mocker.AsyncMock,
+        return_value=DEMO_COMMIT,
+    )
+    ref_mock = mocker.patch(
+        "gitingest.utils.git_utils._resolve_ref_to_sha",
+        new_callable=mocker.AsyncMock,
+        return_value=DEMO_COMMIT,
+    )
+    # return whichever you want to assert on; here we return the dict
+    return {"head": head_mock, "ref": ref_mock}
+
+
+@pytest.fixture
 def stub_branches(mocker: MockerFixture) -> Callable[[list[str]], None]:
     """Return a function that stubs git branch discovery to *branches*."""
 
     def _factory(branches: list[str]) -> None:
+        stdout = (
+            "\n".join(f"{DEMO_COMMIT[:12]}{i:02d}\trefs/heads/{b}" for i, b in enumerate(branches)).encode() + b"\n"
+        )
         mocker.patch(
             "gitingest.utils.git_utils.run_command",
             new_callable=AsyncMock,
-            return_value=("\n".join(f"refs/heads/{b}" for b in branches).encode() + b"\n", b""),
+            return_value=(stdout, b""),
         )
         mocker.patch(
             "gitingest.utils.git_utils.fetch_remote_branches_or_tags",

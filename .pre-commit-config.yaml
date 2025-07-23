@@ -122,9 +122,12 @@ repos:
             pytest-asyncio,
             pytest-mock,
             python-dotenv,
+            'sentry-sdk[fastapi]',
             slowapi,
             starlette>=0.40.0,
+            strenum; python_version < '3.11',
             tiktoken>=0.7.0,
+            typing_extensions>= 4.0.0; python_version < '3.10',
             uvicorn>=0.11.7,
           ]
 
@@ -144,9 +147,12 @@ repos:
             pytest-asyncio,
             pytest-mock,
             python-dotenv,
+            'sentry-sdk[fastapi]',
             slowapi,
             starlette>=0.40.0,
+            strenum; python_version < '3.11',
             tiktoken>=0.7.0,
+            typing_extensions>= 4.0.0; python_version < '3.10',
             uvicorn>=0.11.7,
           ]
 

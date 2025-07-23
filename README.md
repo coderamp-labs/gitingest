@@ -66,6 +66,14 @@ You can install it using `pip`:
 pip install gitingest
 ```
 
+or
+
+```bash
+pip install gitingest[server]
+```
+
+to include server dependencies for self-hosting.
+
 However, it might be a good idea to use `pipx` to install it.
 You can install `pipx` using your preferred package manager.
 

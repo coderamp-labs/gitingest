@@ -10,7 +10,7 @@ import pytest
 
 from gitingest.config import MAX_FILE_SIZE
 from gitingest.query_parser import parse_remote_repo
-from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
+from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS, _is_valid_git_commit_hash
 
 # Repository matrix: (host, user, repo)
 _REPOS: list[tuple[str, str, str]] = [
@@ -57,6 +57,10 @@ async def test_parse_query_without_host(
     # Compare against the canonical dict while ignoring unpredictable fields.
     actual = query.model_dump(exclude={"id", "local_path", "ignore_patterns"})
 
+    assert "commit" in actual
+    assert _is_valid_git_commit_hash(actual["commit"])
+    del actual["commit"]
+
     expected = {
         "host": host,
         "user_name": user,
@@ -68,7 +72,6 @@ async def test_parse_query_without_host(
         "branch": None,
         "tag": None,
         "max_file_size": MAX_FILE_SIZE,
-        "commit": None,
         "include_patterns": None,
         "include_submodules": False,
     }
