@@ -53,31 +53,59 @@ def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> N
     """
     is_main_branch = ref == "main"
     is_blob = path_type == "blob"
-    expected_lines = 7 - int(is_main_branch) - int(ref_type == "Commit")
-    expected_parsed = expected_lines - 1
+    expected_lines = _calculate_expected_lines(ref_type, is_main_branch=is_main_branch)
+    expected_non_empty_lines = expected_lines - 1
 
     summary, _, _ = ingest(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
     lines = summary.splitlines()
-    parsed = dict(line.split(": ", 1) for line in lines if ": " in line)
+    parsed_lines = dict(line.split(": ", 1) for line in lines if ": " in line)
 
-    assert parsed["Repository"] == REPO
+    assert parsed_lines["Repository"] == REPO
 
     if is_main_branch:
         # We omit the 'Branch' line for 'main' branches.
-        assert ref_type not in parsed
+        assert ref_type not in parsed_lines
     else:
-        assert parsed[ref_type] == ref
+        assert parsed_lines[ref_type] == ref
 
     if is_blob:
-        assert parsed["File"] == Path(path).name
-        assert "Lines" in parsed
+        assert parsed_lines["File"] == Path(path).name
+        assert "Lines" in parsed_lines
     else:  # 'tree'
-        assert parsed["Subpath"] == path
-        assert "Files analyzed" in parsed
+        assert parsed_lines["Subpath"] == path
+        assert "Files analyzed" in parsed_lines
 
-    token_match = re.search(r"\d+", parsed["Estimated tokens"])
+    token_match = re.search(r"\d+", parsed_lines["Estimated tokens"])
     assert token_match, "'Estimated tokens' should contain a number"
     assert int(token_match.group()) > 0
 
     assert len(lines) == expected_lines
-    assert len(parsed) == expected_parsed
+    assert len(parsed_lines) == expected_non_empty_lines
+
+
+def _calculate_expected_lines(ref_type: str, *, is_main_branch: bool) -> int:
+    """Calculate the expected number of lines in the summary.
+
+    The total number of lines depends on the following:
+    - Commit type does not include the 'Branch'/'Tag' line, reducing the count by 1.
+    - The "main" branch omits the 'Branch' line, reducing the count by 1.
+
+    Parameters
+    ----------
+    ref_type : str
+        The type of reference, e.g., "Branch", "Tag", or "Commit".
+    is_main_branch : bool
+        True if the reference is the "main" branch, False otherwise.
+
+    Returns
+    -------
+    int
+        The expected number of lines in the summary.
+
+    """
+    base_lines = 7
+    if is_main_branch:
+        base_lines -= 1
+    if ref_type == "Commit":
+        base_lines -= 1
+    return base_lines
