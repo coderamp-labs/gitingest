@@ -1,0 +1,171 @@
+name: Manage PR Temp Envs
+'on':
+  pull_request:
+    types:
+      - labeled
+      - unlabeled
+      - closed
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  APP_NAME: gitingest
+  FLUX_OWNER: '${{ github.repository_owner }}'
+  FLUX_REPO: '${{ secrets.CR_FLUX_REPO }}'
+
+jobs:
+  deploy-pr-env:
+    if: >-
+      ${{ github.event.action == 'labeled' && github.event.label.name ==
+      'deploy-pr-temp-env' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: '${{ secrets.CR_APP_CI_APP_ID }}'
+          private-key: '${{ secrets.CR_APP_CI_PRIVATE_KEY }}'
+          owner: '${{ env.FLUX_OWNER }}'
+          repositories: '${{ env.FLUX_REPO }}'
+
+      - name: Checkout Flux repo
+        uses: actions/checkout@v4
+        with:
+          repository: '${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}'
+          token: '${{ steps.app-token.outputs.token }}'
+          path: flux-repo
+          persist-credentials: false
+
+      - name: Export PR ID
+        shell: bash
+        run: 'echo "PR_ID=${{ github.event.pull_request.number }}" >> $GITHUB_ENV'
+
+      - name: Ensure template exists
+        shell: bash
+        run: >
+          T="flux-repo/pr-template/${APP_NAME}"
+
+          [[ -d "$T" ]] || { echo "Missing $T"; exit 1; }
+
+          [[ $(find "$T" -type f | wc -l) -gt 0 ]] || { echo "No files in $T";
+          exit 1; }
+
+      - name: Render & copy template
+        shell: bash
+        run: |
+          SRC="flux-repo/pr-template/${APP_NAME}"
+          DST="flux-repo/deployments/prs-${APP_NAME}/${PR_ID}"
+          mkdir -p "$DST"
+          cp -r "$SRC/." "$DST/"
+          find "$DST" -type f -print0 \
+            | xargs -0 -n1 sed -i "s|@PR-ID@|${PR_ID}|g"
+
+      - name: Sanity‑check rendered output
+        shell: bash
+        run: >
+          E=$(find "flux-repo/pr-template/${APP_NAME}" -type f | wc -l)
+
+          G=$(find "flux-repo/deployments/prs-${APP_NAME}/${PR_ID}" -type f | wc
+          -l)
+
+          (( G == E )) || { echo "Expected $E files, got $G"; exit 1; }
+
+      - name: Commit & push creation
+        shell: bash
+        run: >
+          cd flux-repo
+
+          git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
+
+          git config user.email "${{ steps.app-token.outputs.app-slug
+          }}[bot]@users.noreply.github.com"
+
+          git add .
+
+          git commit -m "chore(prs-${APP_NAME}): create temp env for PR #${{
+          env.PR_ID }} [skip ci]" || echo "Nothing to commit"
+
+          git remote set-url origin \
+            https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}.git
+          git push origin HEAD:main
+
+      - name: Comment preview URL on PR
+        uses: thollander/actions-comment-pull-request@v3
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          pr-number: '${{ github.event.pull_request.number }}'
+          comment-tag: 'pr-preview'
+          create-if-not-exists: 'true'
+          message: |
+            ⚙️ Preview environment for PR #${{ env.PR_ID }} is available at:
+            https://pr-${{ env.PR_ID }}.${{ env.APP_NAME }}.coderamp.dev/
+
+  remove-pr-env:
+    if: >-
+      (github.event.action == 'unlabeled' && github.event.label.name ==
+      'deploy-pr-temp-env') || (github.event.action == 'closed')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: '${{ secrets.CR_APP_CI_APP_ID }}'
+          private-key: '${{ secrets.CR_APP_CI_PRIVATE_KEY }}'
+          owner: '${{ env.FLUX_OWNER }}'
+          repositories: '${{ env.FLUX_REPO }}'
+
+      - name: Checkout Flux repo
+        uses: actions/checkout@v4
+        with:
+          repository: '${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}'
+          token: '${{ steps.app-token.outputs.token }}'
+          path: flux-repo
+          persist-credentials: false
+
+      - name: Export PR ID
+        shell: bash
+        run: 'echo "PR_ID=${{ github.event.pull_request.number }}" >> $GITHUB_ENV'
+
+      - name: Remove deployed directory
+        shell: bash
+        run: |
+          DST="flux-repo/deployments/prs-${APP_NAME}/${PR_ID}"
+          if [[ -d "$DST" ]]; then
+            rm -rf "$DST"
+            echo "✅ Deleted $DST"
+          else
+            echo "⏭️ Nothing to delete at $DST"
+          fi
+
+      - name: Commit & push deletion
+        shell: bash
+        run: >
+          cd flux-repo
+
+          git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
+
+          git config user.email "${{ steps.app-token.outputs.app-slug
+          }}[bot]@users.noreply.github.com"
+
+          git add -A
+
+          git commit -m "chore(prs-${APP_NAME}): remove temp env for PR #${{
+          env.PR_ID }} [skip ci]" || echo "Nothing to commit"
+
+          git remote set-url origin \
+            https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}.git
+          git push origin HEAD:main
+
+      - name: Comment preview URL on PR
+        uses: thollander/actions-comment-pull-request@v3
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          pr-number: '${{ github.event.pull_request.number }}'
+          comment-tag: 'pr-preview'
+          create-if-not-exists: 'true'
+          message: |
+            ⚙️ Preview environment was undeployed.

@@ -194,7 +194,6 @@ def load_ignore_patterns(root: Path, filename: str) -> set[str]:
     for ignore_file in root.rglob(filename):
         if ignore_file.is_file():
             patterns.update(_parse_ignore_file(ignore_file, root))
-
     return patterns
 
 

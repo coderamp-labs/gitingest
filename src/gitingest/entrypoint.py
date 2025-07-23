@@ -83,15 +83,14 @@ async def ingest_async(
         token=token,
     )
 
-    if not include_gitignored:
-        _apply_gitignores(query)
-
     if query.url:
         _override_branch_and_tag(query, branch=branch, tag=tag)
 
     query.include_submodules = include_submodules
 
     async with _clone_repo_if_remote(query, token=token):
+        if not include_gitignored:
+            _apply_gitignores(query)
         summary, tree, content = ingest_query(query)
         await _write_output(tree, content=content, target=output)
         return summary, tree, content
