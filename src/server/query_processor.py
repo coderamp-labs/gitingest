@@ -22,6 +22,7 @@ from server.s3_utils import (
     upload_metadata_to_s3,
     upload_to_s3,
 )
+from gitingest.schemas import Context
 from server.server_config import MAX_DISPLAY_SIZE
 
 # Initialize logger for this module
@@ -301,7 +302,10 @@ async def process_query(
         raise RuntimeError(msg)
 
     try:
-        summary, tree, content = ingest_query(query)
+        context = ingest_query(query)
+        summary, tree, content = context.generate_digest()
+
+        # Prepare the digest content (tree + content)
         digest_content = tree + "\n" + content
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
