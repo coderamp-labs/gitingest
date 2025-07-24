@@ -58,12 +58,6 @@ repos:
       - id: python-use-type-annotations
         description: 'Enforce that python3.6+ type annotations are used instead of type comments.'
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        description: 'Sort imports alphabetically, and automatically separated into sections and by type.'
-
   - repo: https://github.com/pre-commit/mirrors-eslint
     rev: v9.30.1
     hooks:
