@@ -159,3 +159,61 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
                 return fp.read()
         except (OSError, UnicodeDecodeError) as exc:
             return f"Error reading file with {good_enc!r}: {exc}"
+
+
+@dataclass
+class Context:
+    """Context for holding a list of FileSystemNode objects and generating a digest on demand."""
+    nodes: list[FileSystemNode]
+
+    def generate_digest(self) -> tuple[str, str, str]:
+        """Generate a summary, directory structure, and file contents for the context's nodes.
+
+        Returns
+        -------
+        tuple[str, str, str]
+            A tuple containing the summary, directory structure, and file contents.
+        """
+        summary_lines = ["Context Digest"]
+        total_files = 0
+        for node in self.nodes:
+            if node.type == FileSystemNodeType.DIRECTORY:
+                total_files += node.file_count
+            elif node.type == FileSystemNodeType.FILE:
+                total_files += 1
+        summary_lines.append(f"Files analyzed: {total_files}")
+        summary = "\n".join(summary_lines)
+
+        # Directory structure
+        tree_lines = ["Directory structure:"]
+        for node in self.nodes:
+            tree_lines.append(self._create_tree_structure(node))
+        tree = "\n".join(tree_lines)
+
+        # File contents
+        content_lines = []
+        for node in self.nodes:
+            content_lines.append(self._gather_file_contents(node))
+        content = "\n".join(content_lines)
+
+        return summary, tree, content
+
+    def _gather_file_contents(self, node: FileSystemNode) -> str:
+        if node.type != FileSystemNodeType.DIRECTORY:
+            return node.content_string
+        return "\n".join(self._gather_file_contents(child) for child in node.children)
+
+    def _create_tree_structure(self, node: FileSystemNode, prefix: str = "", is_last: bool = True) -> str:
+        tree_str = ""
+        current_prefix = "└── " if is_last else "├── "
+        display_name = node.name
+        if node.type == FileSystemNodeType.DIRECTORY:
+            display_name += "/"
+        elif node.type == FileSystemNodeType.SYMLINK:
+            display_name += " -> " + readlink(node.path).name
+        tree_str += f"{prefix}{current_prefix}{display_name}\n"
+        if node.type == FileSystemNodeType.DIRECTORY and node.children:
+            prefix += "    " if is_last else "│   "
+            for i, child in enumerate(node.children):
+                tree_str += self._create_tree_structure(child, prefix=prefix, is_last=i == len(node.children) - 1)
+        return tree_str
