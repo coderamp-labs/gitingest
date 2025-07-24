@@ -7,6 +7,8 @@ from typing import Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from gitingest.utils.compat_func import removesuffix
+
 # needed for type checking (pydantic)
 from server.form_types import IntForm, OptStrForm, StrForm  # noqa: TC001 (typing-only-first-party-import)
 
@@ -45,16 +47,16 @@ class IngestRequest(BaseModel):
     @field_validator("input_text")
     @classmethod
     def validate_input_text(cls, v: str) -> str:
-        """Validate that input_text is not empty."""
+        """Validate that ``input_text`` is not empty."""
         if not v.strip():
             err = "input_text cannot be empty"
             raise ValueError(err)
-        return v.strip()
+        return removesuffix(v.strip(), ".git")
 
     @field_validator("pattern")
     @classmethod
     def validate_pattern(cls, v: str) -> str:
-        """Validate pattern field."""
+        """Validate ``pattern`` field."""
         return v.strip()
 
 

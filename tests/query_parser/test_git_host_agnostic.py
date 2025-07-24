@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from gitingest.query_parser import parse_query
-from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
+from gitingest.config import MAX_FILE_SIZE
+from gitingest.query_parser import parse_remote_repo
+from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS, _is_valid_git_commit_hash
 
 # Repository matrix: (host, user, repo)
 _REPOS: list[tuple[str, str, str]] = [
@@ -33,7 +34,7 @@ async def test_parse_query_without_host(
     repo: str,
     variant: str,
 ) -> None:
-    """Verify that ``parse_query`` handles URLs, host-omitted URLs and raw slugs."""
+    """Verify that ``parse_remote_repo`` handles URLs, host-omitted URLs and raw slugs."""
     # Build the input URL based on the selected variant
     if variant == "full":
         url = f"https://{host}/{user}/{repo}"
@@ -48,15 +49,20 @@ async def test_parse_query_without_host(
     # because the parser cannot guess which domain to use.
     if variant == "slug" and host not in KNOWN_GIT_HOSTS:
         with pytest.raises(ValueError, match="Could not find a valid repository host"):
-            await parse_query(url, max_file_size=50, from_web=True)
+            await parse_remote_repo(url)
         return
 
-    query = await parse_query(url, max_file_size=50, from_web=True)
+    query = await parse_remote_repo(url)
 
     # Compare against the canonical dict while ignoring unpredictable fields.
     actual = query.model_dump(exclude={"id", "local_path", "ignore_patterns"})
 
+    assert "commit" in actual
+    assert _is_valid_git_commit_hash(actual["commit"])
+    del actual["commit"]
+
     expected = {
+        "host": host,
         "user_name": user,
         "repo_name": repo,
         "url": expected_url,
@@ -65,8 +71,7 @@ async def test_parse_query_without_host(
         "type": None,
         "branch": None,
         "tag": None,
-        "commit": None,
-        "max_file_size": 50,
+        "max_file_size": MAX_FILE_SIZE,
         "include_patterns": None,
         "include_submodules": False,
     }
