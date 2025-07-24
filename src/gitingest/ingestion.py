@@ -7,19 +7,18 @@ from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
 from gitingest.output_formatter import format_node
-from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats
+from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats, Context
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
 
 
-def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
+def ingest_query(query: IngestionQuery) -> Context:
     """Run the ingestion process for a parsed query.
 
     This is the main entry point for analyzing a codebase directory or single file. It processes the query
-    parameters, reads the file or directory content, and generates a summary, directory structure, and file content,
-    along with token estimations.
+    parameters, reads the file or directory content, and returns a Context object that can generate the final output digest on demand.
 
     Parameters
     ----------
@@ -28,8 +27,8 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
 
     Returns
     -------
-    tuple[str, str, str]
-        A tuple containing the summary, directory structure, and file contents.
+    Context
+        A Context object representing the ingested file system nodes. Call .generate_digest() to get the summary, directory structure, and file contents.
 
     Raises
     ------
@@ -65,7 +64,7 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
             msg = f"File {file_node.name} has no content"
             raise ValueError(msg)
 
-        return format_node(file_node, query=query)
+        return Context([file_node])
 
     root_node = FileSystemNode(
         name=path.name,
@@ -78,7 +77,7 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
 
     _process_node(node=root_node, query=query, stats=stats)
 
-    return format_node(root_node, query=query)
+    return Context([root_node])
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:

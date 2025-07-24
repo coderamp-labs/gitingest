@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery
+    from gitingest.schemas import Context
 
 
 async def ingest_async(
@@ -47,6 +48,8 @@ async def ingest_async(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a summary, a tree-like
     structure of the files, and the content of the files. The results can optionally be written to an output file.
+
+    The output is generated lazily using a Context object and its .generate_digest() method.
 
     Parameters
     ----------
@@ -112,7 +115,8 @@ async def ingest_async(
     async with _clone_repo_if_remote(query, token=token):
         if not include_gitignored:
             _apply_gitignores(query)
-        summary, tree, content = ingest_query(query)
+        context = ingest_query(query)
+        summary, tree, content = context.generate_digest()
         await _write_output(tree, content=content, target=output)
         return summary, tree, content
 
@@ -135,6 +139,8 @@ def ingest(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a summary, a tree-like
     structure of the files, and the content of the files. The results can optionally be written to an output file.
+
+    The output is generated lazily using a Context object and its .generate_digest() method.
 
     Parameters
     ----------
@@ -175,20 +181,20 @@ def ingest(
     ``ingest_async`` : The asynchronous version of this function.
 
     """
-    return asyncio.run(
-        ingest_async(
-            source=source,
-            max_file_size=max_file_size,
-            include_patterns=include_patterns,
-            exclude_patterns=exclude_patterns,
-            branch=branch,
-            tag=tag,
-            include_gitignored=include_gitignored,
-            include_submodules=include_submodules,
-            token=token,
-            output=output,
-        ),
-    )
+    import asyncio
+    context = asyncio.run(ingest_async(
+        source,
+        max_file_size=max_file_size,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
+        branch=branch,
+        tag=tag,
+        include_gitignored=include_gitignored,
+        include_submodules=include_submodules,
+        token=token,
+        output=output,
+    ))
+    return context.generate_digest()
 
 
 def _override_branch_and_tag(query: IngestionQuery, branch: str | None, tag: str | None) -> None:

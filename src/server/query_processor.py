@@ -10,6 +10,7 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
+from gitingest.schemas import Context
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
 from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import Colors, log_slider_to_size
@@ -72,7 +73,8 @@ async def process_query(
     short_repo_url = f"{query.user_name}/{query.repo_name}"  # Sets the "<user>/<repo>" for the page title
 
     try:
-        summary, tree, content = ingest_query(query)
+        context = ingest_query(query)
+        summary, tree, content = context.generate_digest()
 
         # TODO: why are we writing the tree and content to a file here?
         local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
