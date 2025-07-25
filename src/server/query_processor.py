@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import cast
 
@@ -12,7 +13,9 @@ from gitingest.utils.git_utils import validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
 from server.server_config import MAX_DISPLAY_SIZE
-from server.server_utils import Colors, log_slider_to_size
+from server.server_utils import log_slider_to_size
+
+logger = logging.getLogger(__name__)
 
 
 async def process_query(
@@ -54,8 +57,7 @@ async def process_query(
     try:
         query = await parse_remote_repo(input_text, token=token)
     except Exception as exc:
-        print(f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}<-  {Colors.END}", end="")
-        print(f"{Colors.RED}{exc}{Colors.END}")
+        logger.exception()
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
@@ -80,7 +82,8 @@ async def process_query(
             f.write(tree + "\n" + content)
 
     except Exception as exc:
-        _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+        logger.exception()
+        _print_error(query.url, max_file_size, pattern_type, pattern)
         return IngestErrorResponse(error=str(exc))
 
     if len(content) > MAX_DISPLAY_SIZE:
@@ -126,27 +129,22 @@ def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) 
 
     """
     default_max_file_kb = 50
-    print(f"{Colors.WHITE}{url:<20}{Colors.END}", end="")
+    logger.info("%s", url)
     if int(max_file_size / 1024) != default_max_file_kb:
-        print(
-            f" | {Colors.YELLOW}Size: {int(max_file_size / 1024)}kB{Colors.END}",
-            end="",
-        )
+        logger.info("Size: %ikB", int(max_file_size / 1024))
     if pattern_type == "include" and pattern != "":
-        print(f" | {Colors.YELLOW}Include {pattern}{Colors.END}", end="")
+        logger.info("Include %s", pattern)
     elif pattern_type == "exclude" and pattern != "":
-        print(f" | {Colors.YELLOW}Exclude {pattern}{Colors.END}", end="")
+        logger.info("Exclude %s", pattern)
 
 
-def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str, pattern: str) -> None:
+def _print_error(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
     """Print a formatted error message for debugging.
 
     Parameters
     ----------
     url : str
         The URL associated with the query that caused the error.
-    exc : Exception
-        The exception raised during the query or process.
     max_file_size : int
         The maximum file size allowed for the query, in bytes.
     pattern_type : str
@@ -155,9 +153,7 @@ def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str
         The actual pattern string to include or exclude in the query.
 
     """
-    print(f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}<-  {Colors.END}", end="")
     _print_query(url, max_file_size, pattern_type, pattern)
-    print(f" | {Colors.RED}{exc}{Colors.END}")
 
 
 def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str, summary: str) -> None:
@@ -178,6 +174,5 @@ def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str
 
     """
     estimated_tokens = summary[summary.index("Estimated tokens:") + len("Estimated ") :]
-    print(f"{Colors.GREEN}INFO{Colors.END}: {Colors.GREEN}<-  {Colors.END}", end="")
     _print_query(url, max_file_size, pattern_type, pattern)
-    print(f" | {Colors.PURPLE}{estimated_tokens}{Colors.END}")
+    logger.info("%s", estimated_tokens)

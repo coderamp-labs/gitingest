@@ -5,6 +5,7 @@ pathspec>=0.12.1
 prometheus-client
 pydantic
 python-dotenv
+python-json-logger
 sentry-sdk[fastapi]
 slowapi
 starlette>=0.40.0  # Vulnerable to https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw

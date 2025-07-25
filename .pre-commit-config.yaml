@@ -122,6 +122,7 @@ repos:
             pytest-asyncio,
             pytest-mock,
             python-dotenv,
+            python-json-logger,
             'sentry-sdk[fastapi]',
             slowapi,
             starlette>=0.40.0,

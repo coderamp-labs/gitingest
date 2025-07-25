@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TypedDict
 
 import click
@@ -11,6 +12,11 @@ from typing_extensions import Unpack
 
 from gitingest.config import MAX_FILE_SIZE, OUTPUT_FILE_NAME
 from gitingest.entrypoint import ingest_async
+from gitingest.logging_config import setup_json_logging
+
+setup_json_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class _CLIArgs(TypedDict):

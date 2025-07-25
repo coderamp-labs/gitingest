@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
-import warnings
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +17,8 @@ from gitingest.utils.query_parser_utils import (
     _is_valid_git_commit_hash,
     _normalise_source,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQuery:
@@ -71,16 +73,19 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
     # TODO: Handle issues and pull requests
     if query.type in {PathKind.ISSUES, PathKind.PULL}:
         msg = f"Warning: Issues and pull requests are not yet supported: {url}. Returning repository root."
+        logger.warning(msg)
         return await _fallback_to_root(query, token=token, warn_msg=msg)
 
     # If no extra path parts, just return
     if not path_parts:
         msg = f"Warning: No extra path parts: {url}. Returning repository root."
+        logger.warning(msg)
         return await _fallback_to_root(query, token=token, warn_msg=msg)
 
     if query.type not in {PathKind.TREE, PathKind.BLOB}:
         # TODO: Handle other types
         msg = f"Warning: Type '{query.type}' is not yet supported: {url}. Returning repository root."
+        logger.warning(msg)
         return await _fallback_to_root(query, token=token, warn_msg=msg)
 
     # Commit, branch, or tag
@@ -169,7 +174,7 @@ async def _configure_branch_or_tag(
     except RuntimeError as exc:
         # If remote discovery fails, we optimistically treat the first path segment as the branch/tag.
         msg = f"Warning: Failed to fetch {_ref_type}: {exc}"
-        warnings.warn(msg, RuntimeWarning, stacklevel=2)
+        logger.warning(msg)
         return path_parts.pop(0) if path_parts else None
 
     # Iterate over the path components and try to find a matching branch/tag

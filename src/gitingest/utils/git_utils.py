@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import re
 import sys
 from pathlib import Path
@@ -15,10 +16,11 @@ from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBID
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from server.server_utils import Colors
 
 if TYPE_CHECKING:
     from gitingest.schemas import CloneConfig
+
+logger = logging.getLogger(__name__)
 
 # GitHub Personal-Access tokens (classic + fine-grained).
 #   - ghp_ / gho_ / ghu_ / ghs_ / ghr_  → 36 alphanumerics
@@ -97,13 +99,10 @@ async def ensure_git_installed() -> None:
         try:
             stdout, _ = await run_command("git", "config", "core.longpaths")
             if stdout.decode().strip().lower() != "true":
-                print(
-                    f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}Git clone may fail on Windows "
-                    f"due to long file paths:{Colors.END}",
-                )
-                print(f"{Colors.RED}To avoid this issue, consider enabling long path support with:{Colors.END}")
-                print(f"{Colors.RED}    git config --global core.longpaths true{Colors.END}")
-                print(f"{Colors.RED}Note: This command may require administrator privileges.{Colors.END}")
+                logger.warning("WARN: Git clone may fail on Windows due to long file paths:")
+                logger.warning("To avoid this issue, consider enabling long path support with:")
+                logger.warning("    git config --global core.longpaths true")
+                logger.warning("Note: This command may require administrator privileges.")
         except RuntimeError:
             # Ignore if checking 'core.longpaths' fails.
             pass

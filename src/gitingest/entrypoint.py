@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 import shutil
 import stat
 import sys
-import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Callable
@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery
+
+logger = logging.getLogger(__name__)
 
 
 async def ingest_async(
@@ -209,19 +211,19 @@ def _override_branch_and_tag(query: IngestionQuery, branch: str | None, tag: str
     """
     if tag and query.tag and tag != query.tag:
         msg = f"Warning: The specified tag '{tag}' overrides the tag found in the URL '{query.tag}'."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     query.tag = tag or query.tag
 
     if branch and query.branch and branch != query.branch:
         msg = f"Warning: The specified branch '{branch}' overrides the branch found in the URL '{query.branch}'."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     query.branch = branch or query.branch
 
     if tag and branch:
         msg = "Warning: Both tag and branch are specified. The tag will be used."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     # Tag wins over branch if both supplied
     if query.tag:
