@@ -1,5 +1,6 @@
 """Ingest endpoint for the API."""
 
+import logging
 from typing import Union
 from uuid import UUID
 
@@ -94,6 +95,8 @@ async def api_ingest_get(
     return response
 
 
+logger = logging.getLogger(__name__)
+
 @router.get("/api/download/file/{ingest_id}", response_model=None)
 async def download_ingest(
     ingest_id: UUID,
@@ -120,9 +123,12 @@ async def download_ingest(
 
     """
     # Check if S3 is enabled and file exists in S3
+    logger.info(f"Checking if S3 is enabled and file exists in S3 for ingest ID: {ingest_id}")
     if is_s3_enabled():
+        logger.info(f"S3 is enabled, checking if file exists in S3 for ingest ID: {ingest_id}")
         s3_url = get_s3_url_for_ingest_id(ingest_id)
         if s3_url:
+            logger.info(f"File exists in S3, redirecting to S3 URL: {s3_url}")
             return RedirectResponse(url=s3_url, status_code=302)
 
     # Fall back to local file serving
