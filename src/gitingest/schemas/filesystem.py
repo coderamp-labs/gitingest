@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 from abc import ABC
+from functools import singledispatchmethod
 
 from gitingest.utils.compat_func import readlink
 from gitingest.utils.file_utils import _decodes, _get_preferred_encodings, _read_chunk
@@ -36,40 +37,44 @@ class FileSystemStats:
     total_files: int = 0
     total_size: int = 0
 
-
-class Source:
+@dataclass
+class Source(ABC):
     """Abstract base class for all sources (files, directories, etc)."""
-    summary: str = ""
-    tree: str = ""
     @property
-    def content(self) -> str:
-        return self._content
-    @content.setter
-    def content(self, value: str) -> None:
-        self._content = value
+    def tree(self) -> str:
+        return self._tree()
+    @property
+    def summary(self) -> str:
+        return getattr(self, "_summary", "")
+    @summary.setter
+    def summary(self, value: str) -> None:
+        self._summary = value
 
+@dataclass
 class FileSystemNode(Source):
-    """Base class for all file system nodes (file, directory, symlink)."""
-    def __init__(self, name: str, path_str: str, path: 'Path', depth: int = 0):
-        self.name = name
-        self.path_str = path_str
-        self.path = path
-        self.depth = depth
-        self.summary = ""
-        self.tree = ""
-        self.children: list[FileSystemNode] = []
-        self.size: int = 0
+    name: str
+    path_str: str
+    path: Path
+    depth: int = 0
+    size: int = 0
 
     @property
-    def content(self) -> str:
-        raise NotImplementedError("Content is not implemented for FileSystemNode")
+    def tree(self):
+        return self._tree()
 
+    @singledispatchmethod
+    def _tree(self):
+        return self.name
+
+@dataclass
 class FileSystemFile(FileSystemNode):
-    @property
-    def content(self) -> str:
-        with open(self.path, "r", encoding="utf-8") as f:
-            return f.read()
+    pass # Nothing for now
 
+@FileSystemNode._tree.register
+def _(self: 'FileSystemFile'):
+    return self.name
+
+@dataclass
 class FileSystemDirectory(FileSystemNode):
     children: list['FileSystemNode'] = field(default_factory=list)
     file_count: int = 0
@@ -77,40 +82,39 @@ class FileSystemDirectory(FileSystemNode):
     type: FileSystemNodeType = FileSystemNodeType.DIRECTORY
 
     def sort_children(self) -> None:
-        """Sort the children nodes of a directory according to a specific order.
-
-        Order of sorting:
-          2. Regular files (not starting with dot)
-          3. Hidden files (starting with dot)
-          4. Regular directories (not starting with dot)
-          5. Hidden directories (starting with dot)
-
-        All groups are sorted alphanumerically within themselves.
-
-        Raises
-        ------
-        ValueError
-            If the node is not a directory.
-        """
-        if self.type != FileSystemNodeType.DIRECTORY:
-            msg = "Cannot sort children of a non-directory node"
-            raise ValueError(msg)
-
+        """Sort the children nodes of a directory according to a specific order."""
         def _sort_key(child: FileSystemNode) -> tuple[int, str]:
-            # returns the priority order for the sort function, 0 is first
-            # Groups: 0=README, 1=regular file, 2=hidden file, 3=regular dir, 4=hidden dir
             name = child.name.lower()
-            if hasattr(child, 'type') and child.type == FileSystemNodeType.FILE:
+            if hasattr(child, 'type') and getattr(child, 'type', None) == FileSystemNodeType.FILE:
                 if name == "readme" or name.startswith("readme."):
                     return (0, name)
                 return (1 if not name.startswith(".") else 2, name)
             return (3 if not name.startswith(".") else 4, name)
-
         self.children.sort(key=_sort_key)
 
+@FileSystemNode._tree.register
+def _(self: 'FileSystemDirectory'):
+    def render_tree(node, prefix="", is_last=True):
+        lines = []
+        current_prefix = "└── " if is_last else "├── "
+        display_name = node.name + "/"
+        lines.append(f"{prefix}{current_prefix}{display_name}")
+        if hasattr(node, 'children') and node.children:
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            for i, child in enumerate(node.children):
+                is_last_child = i == len(node.children) - 1
+                lines.extend(child._tree()(child, prefix=new_prefix, is_last=is_last_child) if hasattr(child, '_tree') else [child.name])
+        return lines
+    return "\n".join(render_tree(self))
+
+@dataclass
 class FileSystemSymlink(FileSystemNode):
+    target: str = ""
     # Add symlink-specific fields if needed
-    pass
+
+@FileSystemNode._tree.register
+def _(self: 'FileSystemSymlink'):
+    return f"{self.name} -> {self.target}" if self.target else self.name
 
 
 @dataclass

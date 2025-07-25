@@ -218,17 +218,8 @@ class DefaultFormatter:
     @summary.register
     def _(self, node: FileSystemDirectory, query):
         template = """
-{%- macro render_tree(node, prefix='', is_last=True) -%}
-    {{ prefix }}{{ '└── ' if is_last else '├── ' }}{{ node.name }}{% if node.type == 'directory' %}/{% endif %}
-    {%- if node.type == 'directory' and node.children %}
-        {%- for i, child in enumerate(node.children) %}
-            {{ render_tree(child, prefix + ('    ' if is_last else '│   '), i == (node.children | length - 1)) }}
-        {%- endfor %}
-    {%- endif %}
-{%- endmacro %}
-
 Directory structure:
-{{ render_tree(node) }}
+{{ node.tree }}
 """
         summary_template = self.env.from_string(template)
         return summary_template.render(node=node, query=query, formatter=self)
