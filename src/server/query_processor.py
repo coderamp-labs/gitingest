@@ -303,6 +303,8 @@ async def process_query(
 
     try:
         context = ingest_query(query)
+        digest = context.generate_digest()
+
         summary, tree, content = context.generate_digest()
 
         # Prepare the digest content (tree + content)
@@ -314,10 +316,10 @@ async def process_query(
         _cleanup_repository(clone_config)
         return IngestErrorResponse(error=str(exc))
 
-    if len(content) > MAX_DISPLAY_SIZE:
-        content = (
-            f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-            "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+    if len(digest) > MAX_DISPLAY_SIZE:
+        digest = (
+            f"(Digest cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+            "download full ingest to see more)\n" + digest[:MAX_DISPLAY_SIZE]
         )
 
     _print_success(
@@ -325,7 +327,7 @@ async def process_query(
         max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,
-        summary=summary,
+        summary=digest,
     )
 
     digest_url = _generate_digest_url(query)
@@ -336,9 +338,9 @@ async def process_query(
     return IngestSuccessResponse(
         repo_url=input_text,
         short_repo_url=short_repo_url,
-        summary=summary,
+        summary="",
         digest_url=digest_url,
-        tree=tree,
+        tree="",
         content=content,
         default_max_file_size=max_file_size,
         pattern_type=pattern_type,

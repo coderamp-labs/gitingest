@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING
 import requests.exceptions
 import tiktoken
 
-from gitingest.schemas import FileSystemNode, FileSystemNodeType
+from gitingest.schemas import FileSystemNode
 from gitingest.utils.compat_func import readlink
+from functools import singledispatchmethod
+from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink
+from gitingest.schemas.filesystem import SEPARATOR
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -24,43 +27,41 @@ _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
 ]
 
 
-def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, str]:
-    """Generate a summary, directory structure, and file contents for a given file system node.
+class Formatter:
+    @singledispatchmethod
+    def format(self, node: Source, query):
+        return f"{getattr(node, 'content', '')}"
 
-    If the node represents a directory, the function will recursively process its contents.
+    @format.register
+    def _(self, node: FileSystemFile, query):
+        return (
+            f"{SEPARATOR}\n"
+            f"{node.name}\n"
+            f"{SEPARATOR}\n\n"
+            f"{node.content}"
+        )
 
-    Parameters
-    ----------
-    node : FileSystemNode
-        The file system node to be summarized.
-    query : IngestionQuery
-        The parsed query object containing information about the repository and query parameters.
+    @format.register
+    def _(self, node: FileSystemDirectory, query):
+        formatted = []
+        for child in node.children:
+            formatted.append(self.format(child, query))
+        return "\n".join(formatted)
 
-    Returns
-    -------
-    tuple[str, str, str]
-        A tuple containing the summary, directory structure, and file contents.
+    @format.register
+    def _(self, node: FileSystemSymlink, query):
+        target = getattr(node, 'target', None)
+        target_str = f" -> {target}" if target else ""
+        return (
+            f"{SEPARATOR}\n"
+            f"{node.name}{target_str}\n"
+            f"{SEPARATOR}\n"
+        )
 
-    """
-    is_single_file = node.type == FileSystemNodeType.FILE
-    summary = _create_summary_prefix(query, single_file=is_single_file)
+class DefaultFormatter(Formatter):
+    pass
 
-    if node.type == FileSystemNodeType.DIRECTORY:
-        summary += f"Files analyzed: {node.file_count}\n"
-    elif node.type == FileSystemNodeType.FILE:
-        summary += f"File: {node.name}\n"
-        summary += f"Lines: {len(node.content.splitlines()):,}\n"
-
-    tree = "Directory structure:\n" + _create_tree_structure(query, node=node)
-
-    content = _gather_file_contents(node)
-
-    token_estimate = _format_token_count(tree + content)
-    if token_estimate:
-        summary += f"\nEstimated tokens: {token_estimate}"
-
-    return summary, tree, content
-
+# Backward compatibility
 
 def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) -> str:
     """Create a prefix string for summarizing a repository or local directory.
