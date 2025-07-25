@@ -14,6 +14,7 @@ from functools import singledispatchmethod
 from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink
 from gitingest.schemas.filesystem import SEPARATOR
 from gitingest.utils.logging_config import get_logger
+from jinja2 import Environment, BaseLoader
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
@@ -26,40 +27,6 @@ _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
     (1_000, "k"),
 ]
 
-
-class Formatter:
-    @singledispatchmethod
-    def format(self, node: Source, query):
-        return f"{getattr(node, 'content', '')}"
-
-    @format.register
-    def _(self, node: FileSystemFile, query):
-        return (
-            f"{SEPARATOR}\n"
-            f"{node.name}\n"
-            f"{SEPARATOR}\n\n"
-            f"{node.content}"
-        )
-
-    @format.register
-    def _(self, node: FileSystemDirectory, query):
-        formatted = []
-        for child in node.children:
-            formatted.append(self.format(child, query))
-        return "\n".join(formatted)
-
-    @format.register
-    def _(self, node: FileSystemSymlink, query):
-        target = getattr(node, 'target', None)
-        target_str = f" -> {target}" if target else ""
-        return (
-            f"{SEPARATOR}\n"
-            f"{node.name}{target_str}\n"
-            f"{SEPARATOR}\n"
-        )
-
-class DefaultFormatter(Formatter):
-    pass
 
 # Backward compatibility
 
@@ -209,3 +176,71 @@ def _format_token_count(text: str) -> str | None:
             return f"{total_tokens / threshold:.1f}{suffix}"
 
     return str(total_tokens)
+
+# Rename JinjaFormatter to DefaultFormatter throughout the file
+class DefaultFormatter:
+    def __init__(self):
+        self.env = Environment(loader=BaseLoader())
+
+    @singledispatchmethod
+    def format(self, node: Source, query):
+        return f"{getattr(node, 'content', '')}"
+
+    @singledispatchmethod
+    def summary(self, node: Source, query):
+        # Default summary: just the name
+        return f"{getattr(node, 'name', '')}"
+
+    @format.register
+    def _(self, node: FileSystemFile, query):
+        template = \
+"""
+{{ SEPARATOR }}
+{{ node.name }}
+{{ SEPARATOR }}
+
+{{ node.content }}
+"""
+        file_template = self.env.from_string(template)
+        return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+
+    @format.register
+    def _(self, node: FileSystemDirectory, query):
+        template = \
+"""
+{% for child in node.children %}
+{{ formatter.format(child, query) }}
+{% endfor %}
+"""
+        dir_template = self.env.from_string(template)
+        return dir_template.render(node=node, query=query, formatter=self)
+
+    @summary.register
+    def _(self, node: FileSystemDirectory, query):
+        template = """
+{%- macro render_tree(node, prefix='', is_last=True) -%}
+    {{ prefix }}{{ '└── ' if is_last else '├── ' }}{{ node.name }}{% if node.type == 'directory' %}/{% endif %}
+    {%- if node.type == 'directory' and node.children %}
+        {%- for i, child in enumerate(node.children) %}
+            {{ render_tree(child, prefix + ('    ' if is_last else '│   '), i == (node.children | length - 1)) }}
+        {%- endfor %}
+    {%- endif %}
+{%- endmacro %}
+
+Directory structure:
+{{ render_tree(node) }}
+"""
+        summary_template = self.env.from_string(template)
+        return summary_template.render(node=node, query=query, formatter=self)
+
+
+    @format.register
+    def _(self, node: FileSystemSymlink, query):
+        template = \
+"""
+{{ SEPARATOR }}
+{{ node.name }}{% if node.target %} -> {{ node.target }}{% endif %}
+{{ SEPARATOR }}
+"""
+        symlink_template = self.env.from_string(template)
+        return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)

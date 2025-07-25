@@ -140,3 +140,7 @@ class Context:
         for node in self.nodes:
             formatted.append(self.formatter.format(node, self.query))
         return context_header + "\n".join(formatted) + context_footer
+
+    @property
+    def summary(self):
+        return "\n".join(self.formatter.summary(node, self.query) for node in self.nodes)
