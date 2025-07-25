@@ -130,7 +130,7 @@ def create_s3_client() -> BaseClient:
     # Log S3 client creation (excluding sensitive info)
     log_config = config.copy()
     has_credentials = bool(log_config.pop("aws_access_key_id", None) or log_config.pop("aws_secret_access_key", None))
-    logger.debug(
+    logger.info(
         msg="Creating S3 client",
         extra={
             "s3_config": log_config,
@@ -184,7 +184,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     }
 
     # Log upload attempt
-    logger.debug("Starting S3 upload", extra=extra_fields)
+    logger.info("Starting S3 upload", extra=extra_fields)
 
     try:
         # Upload the content with ingest_id as tag
@@ -224,7 +224,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
             public_url = f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{s3_file_path}"
 
     # Log successful upload
-    logger.debug(
+    logger.info(
         "S3 upload completed successfully",
         extra={
             "bucket_name": bucket_name,
@@ -281,10 +281,10 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
 
     """
     if not is_s3_enabled():
-        logger.debug("S3 not enabled, skipping URL lookup for ingest_id: %s", ingest_id)
+        logger.info("S3 not enabled, skipping URL lookup for ingest_id: %s", ingest_id)
         return None
 
-    logger.debug(msg="Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
+    logger.info(msg="Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
 
     try:
         s3_client = create_s3_client()
@@ -309,7 +309,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     target_ingest_id=ingest_id,
                 ):
                     s3_url = _build_s3_url(key)
-                    logger.debug(
+                    logger.info(
                         msg="Found S3 object for ingest ID",
                         extra={
                             "ingest_id": str(ingest_id),
@@ -320,7 +320,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     )
                     return s3_url
 
-        logger.debug(
+        logger.info(
             msg="No S3 object found for ingest ID",
             extra={
                 "ingest_id": str(ingest_id),
