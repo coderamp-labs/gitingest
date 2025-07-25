@@ -131,11 +131,7 @@ def create_s3_client() -> BaseClient:
     log_config = config.copy()
     has_credentials = bool(log_config.pop("aws_access_key_id", None) or log_config.pop("aws_secret_access_key", None))
     logger.info(
-        msg="Creating S3 client",
-        extra={
-            "s3_config": log_config,
-            "has_credentials": has_credentials,
-        },
+        msg=f"Creating S3 client with config: {log_config}, has_credentials: {has_credentials}"
     )
     return boto3.client("s3", **config)
 
@@ -315,7 +311,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     return s3_url
 
         logger.info(
-            msg=f"No S3 obj for ingest_id={ingest_id} (checked {objects_checked})",
+            msg=f"No S3 obj for ingest_id={ingest_id} (checked {objects_checked}, bucket_name={bucket_name})",
         )
 
     except ClientError as err:
