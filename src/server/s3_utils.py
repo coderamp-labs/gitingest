@@ -310,32 +310,19 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                 ):
                     s3_url = _build_s3_url(key)
                     logger.info(
-                        msg="Found S3 object for ingest ID",
-                        extra={
-                            "ingest_id": str(ingest_id),
-                            "s3_key": key,
-                            "s3_url": s3_url,
-                            "objects_checked": objects_checked,
-                        },
+                        msg=f"Found S3 object for ingest ID: {ingest_id}, s3_key: {key}, s3_url: {s3_url}, objects_checked: {objects_checked}",
                     )
                     return s3_url
 
         logger.info(
-            msg="No S3 object found for ingest ID",
-            extra={
-                "ingest_id": str(ingest_id),
-                "objects_checked": objects_checked,
-            },
+            msg=f"No S3 obj for ingest_id={ingest_id} (checked {objects_checked})",
         )
 
     except ClientError as err:
         logger.exception(
-            msg="Error during S3 URL lookup",
-            extra={
-                "ingest_id": str(ingest_id),
-                "error_code": err.response.get("Error", {}).get("Code"),
-                "error_message": str(err),
-            },
+            f"Error during S3 URL lookup for ingest_id={ingest_id}, "
+            f"error_code={err.response.get('Error', {}).get('Code')}, "
+            f"error_message={err}"
         )
 
     return None
