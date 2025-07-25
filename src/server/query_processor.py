@@ -74,21 +74,21 @@ async def process_query(
 
     try:
         context = ingest_query(query)
-        summary, tree, content = context.generate_digest()
+        digest = context.generate_digest()
 
-        # TODO: why are we writing the tree and content to a file here?
+        # TODO: why are we writing the digest to a file here?
         local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
         with local_txt_file.open("w", encoding="utf-8") as f:
-            f.write(tree + "\n" + content)
+            f.write(digest)
 
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         return IngestErrorResponse(error=str(exc))
 
-    if len(content) > MAX_DISPLAY_SIZE:
-        content = (
-            f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-            "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+    if len(digest) > MAX_DISPLAY_SIZE:
+        digest = (
+            f"(Digest cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+            "download full ingest to see more)\n" + digest[:MAX_DISPLAY_SIZE]
         )
 
     _print_success(
@@ -96,16 +96,16 @@ async def process_query(
         max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,
-        summary=summary,
+        summary=digest,
     )
 
     return IngestSuccessResponse(
         repo_url=input_text,
         short_repo_url=short_repo_url,
-        summary=summary,
+        summary="",
         ingest_id=query.id,
-        tree=tree,
-        content=content,
+        tree="",
+        content=digest,
         default_max_file_size=slider_position,
         pattern_type=pattern_type,
         pattern=pattern,

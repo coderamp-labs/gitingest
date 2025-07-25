@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
-from gitingest.output_formatter import format_node
-from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats, Context
+from gitingest.output_formatter import DefaultFormatter
+from gitingest.schemas import FileSystemNode, FileSystemStats, Context
+from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 
 if TYPE_CHECKING:
@@ -51,11 +52,16 @@ def ingest_query(query: IngestionQuery) -> Context:
 
         relative_path = path.relative_to(query.local_path)
 
-        file_node = FileSystemNode(
+        # file_node = FileSystemNode(
+        #     name=path.name,
+        #     type=FileSystemNodeType.FILE,
+        #     size=path.stat().st_size,
+        #     file_count=1,
+        #     path_str=str(relative_path),
+        #     path=path,
+        # )
+        file_node = FileSystemFile(
             name=path.name,
-            type=FileSystemNodeType.FILE,
-            size=path.stat().st_size,
-            file_count=1,
             path_str=str(relative_path),
             path=path,
         )
@@ -64,11 +70,16 @@ def ingest_query(query: IngestionQuery) -> Context:
             msg = f"File {file_node.name} has no content"
             raise ValueError(msg)
 
-        return Context([file_node])
+        return Context([file_node], DefaultFormatter(), query)
 
-    root_node = FileSystemNode(
+    # root_node = FileSystemNode(
+    #     name=path.name,
+    #     type=FileSystemNodeType.DIRECTORY,
+    #     path_str=str(path.relative_to(query.local_path)),
+    #     path=path,
+    # )
+    root_node = FileSystemDirectory(
         name=path.name,
-        type=FileSystemNodeType.DIRECTORY,
         path_str=str(path.relative_to(query.local_path)),
         path=path,
     )
@@ -77,7 +88,7 @@ def ingest_query(query: IngestionQuery) -> Context:
 
     _process_node(node=root_node, query=query, stats=stats)
 
-    return Context([root_node])
+    return Context([root_node], DefaultFormatter(), query)
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:
@@ -114,9 +125,8 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
-            child_directory_node = FileSystemNode(
+            child_directory_node = FileSystemDirectory(
                 name=sub_path.name,
-                type=FileSystemNodeType.DIRECTORY,
                 path_str=str(sub_path.relative_to(query.local_path)),
                 path=sub_path,
                 depth=node.depth + 1,
@@ -154,9 +164,8 @@ def _process_symlink(path: Path, parent_node: FileSystemNode, stats: FileSystemS
         The base path of the repository or directory being processed.
 
     """
-    child = FileSystemNode(
+    child = FileSystemSymlink(
         name=path.name,
-        type=FileSystemNodeType.SYMLINK,
         path_str=str(path.relative_to(local_path)),
         path=path,
         depth=parent_node.depth + 1,
@@ -166,7 +175,7 @@ def _process_symlink(path: Path, parent_node: FileSystemNode, stats: FileSystemS
     parent_node.file_count += 1
 
 
-def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStats, local_path: Path) -> None:
+def _process_file(path: Path, parent_node: FileSystemDirectory, stats: FileSystemStats, local_path: Path) -> None:
     """Process a file in the file system.
 
     This function checks the file's size, increments the statistics, and reads its content.
@@ -176,7 +185,7 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
     ----------
     path : Path
         The full path of the file.
-    parent_node : FileSystemNode
+    parent_node : FileSystemDirectory
         The dictionary to accumulate the results.
     stats : FileSystemStats
         Statistics tracking object for the total file count and size.
@@ -196,11 +205,8 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
     stats.total_files += 1
     stats.total_size += file_size
 
-    child = FileSystemNode(
+    child = FileSystemFile(
         name=path.name,
-        type=FileSystemNodeType.FILE,
-        size=file_size,
-        file_count=1,
         path_str=str(path.relative_to(local_path)),
         path=path,
         depth=parent_node.depth + 1,

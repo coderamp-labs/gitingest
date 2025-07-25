@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback
 from typing import Any
 
 from fastapi import status
@@ -40,6 +41,8 @@ async def _perform_ingestion(
         )
 
         if isinstance(result, IngestErrorResponse):
+            # print stack trace to console for debugging
+            print(traceback.format_exc())
             # Return structured error response with 400 status code
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=result.model_dump())
 
@@ -49,9 +52,13 @@ async def _perform_ingestion(
     except ValueError as ve:
         # Handle validation errors with 400 status code
         error_response = IngestErrorResponse(error=f"Validation error: {ve!s}")
+        # print stack trace to console for debugging
+        print(traceback.format_exc())
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=error_response.model_dump())
 
     except Exception as exc:
         # Handle unexpected errors with 500 status code
         error_response = IngestErrorResponse(error=f"Internal server error: {exc!s}")
+        # print stack trace to console for debugging
+        print(traceback.format_exc())
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=error_response.model_dump())
