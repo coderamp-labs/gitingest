@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from server.server_config import templates
+from server.server_config import JINJA_TEMPLATES
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ async def catch_all(request: Request, full_path: str) -> HTMLResponse:
         and other default parameters such as file size.
 
     """
-    return templates.TemplateResponse(
+    return JINJA_TEMPLATES.TemplateResponse(
         "git.jinja",
         {
             "request": request,

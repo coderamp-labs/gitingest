@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from gitingest.config import MAX_FILE_SIZE
+from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE_BYTES
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS, _is_valid_git_commit_hash
 
@@ -72,6 +72,9 @@ async def test_parse_query_without_host(
         "branch": None,
         "tag": None,
         "max_file_size": MAX_FILE_SIZE,
+        "max_directory_depth": MAX_DIRECTORY_DEPTH,
+        "max_files": MAX_FILES,
+        "max_total_size_bytes": MAX_TOTAL_SIZE_BYTES,
         "include_patterns": None,
         "include_submodules": False,
     }

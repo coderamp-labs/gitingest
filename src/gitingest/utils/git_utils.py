@@ -13,9 +13,9 @@ from urllib.parse import urlparse
 import httpx
 from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
+from gitingest.utils.colors import Colors
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from server.server_utils import Colors
 
 if TYPE_CHECKING:
     from gitingest.schemas import CloneConfig
