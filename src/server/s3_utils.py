@@ -25,8 +25,9 @@ class S3UploadError(Exception):
 
 def is_s3_enabled() -> bool:
     """Check if S3 is enabled via environment variables."""
-
-    return os.getenv("S3_ENABLED", "false").lower() == "true"
+    s3_enabled = os.getenv("S3_ENABLED", "false").lower() == "true"
+    logger.info(f"S3 enabled check: S3_ENABLED={os.getenv('S3_ENABLED', 'false')}, result={s3_enabled}")
+    return s3_enabled
 
 def get_s3_config() -> dict[str, str | None]:
     """Get S3 configuration from environment variables."""
@@ -36,17 +37,34 @@ def get_s3_config() -> dict[str, str | None]:
         "aws_secret_access_key": os.getenv("S3_SECRET_KEY"),
         "region_name": os.getenv("S3_REGION") or os.getenv("AWS_REGION", "us-east-1"),
     }
-    return {k: v for k, v in config.items() if v is not None}
+    
+    # Log config validation (without sensitive data)
+    config_status = {
+        "endpoint_url": "SET" if config["endpoint_url"] else "NOT_SET",
+        "aws_access_key_id": "SET" if config["aws_access_key_id"] else "NOT_SET", 
+        "aws_secret_access_key": "SET" if config["aws_secret_access_key"] else "NOT_SET",
+        "region_name": config["region_name"]
+    }
+    logger.info(f"S3 config status: {config_status}")
+    
+    filtered_config = {k: v for k, v in config.items() if v is not None}
+    logger.info(f"S3 config keys present: {list(filtered_config.keys())}")
+    
+    return filtered_config
 
 
 def get_s3_bucket_name() -> str:
     """Get S3 bucket name from environment variables."""
-    return os.getenv("S3_BUCKET_NAME", "gitingest-bucket")
+    bucket_name = os.getenv("S3_BUCKET_NAME", "gitingest-bucket")
+    logger.info(f"S3 bucket name: {bucket_name}")
+    return bucket_name
 
 
 def get_s3_alias_host() -> str | None:
     """Get S3 alias host for public URLs."""
-    return os.getenv("S3_ALIAS_HOST")
+    alias_host = os.getenv("S3_ALIAS_HOST")
+    logger.info(f"S3 alias host: {'SET' if alias_host else 'NOT_SET'}")
+    return alias_host
 
 
 def generate_s3_file_path(
@@ -126,14 +144,43 @@ def generate_s3_file_path(
 
 def create_s3_client() -> BaseClient:
     """Create and return an S3 client with configuration from environment."""
-    config = get_s3_config()
-    # Log S3 client creation (excluding sensitive info)
-    log_config = config.copy()
-    has_credentials = bool(log_config.pop("aws_access_key_id", None) or log_config.pop("aws_secret_access_key", None))
-    logger.info(
-        msg=f"Creating S3 client with config: {log_config}, has_credentials: {has_credentials}"
-    )
-    return boto3.client("s3", **config)
+    try:
+        config = get_s3_config()
+        
+        # Log S3 client creation (excluding sensitive info)
+        log_config = config.copy()
+        has_access_key = bool(log_config.pop("aws_access_key_id", None))
+        has_secret_key = bool(log_config.pop("aws_secret_access_key", None))
+        
+        logger.info(
+            f"Creating S3 client - endpoint: {log_config.get('endpoint_url', 'DEFAULT_AWS')}, "
+            f"region: {log_config.get('region_name', 'us-east-1')}, "
+            f"has_access_key: {has_access_key}, has_secret_key: {has_secret_key}, "
+            f"credentials_provided: {has_access_key and has_secret_key}"
+        )
+        
+        client = boto3.client("s3", **config)
+        
+        # Test client by attempting to list buckets (this will fail if credentials are wrong)
+        try:
+            # This is a lightweight test of the client credentials
+            client.list_buckets()
+            logger.info("S3 client created successfully and credentials validated")
+        except ClientError as test_err:
+            logger.warning(
+                f"S3 client created but credential validation failed - "
+                f"error_code: {test_err.response.get('Error', {}).get('Code')}, "
+                f"error_message: {str(test_err)}"
+            )
+        
+        return client
+        
+    except Exception as err:
+        logger.error(
+            f"Failed to create S3 client - error_type: {type(err).__name__}, "
+            f"error_message: {str(err)}"
+        )
+        raise
 
 
 def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
@@ -172,15 +219,8 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     s3_client = create_s3_client()
     bucket_name = get_s3_bucket_name()
 
-    extra_fields = {
-        "bucket_name": bucket_name,
-        "s3_file_path": s3_file_path,
-        "ingest_id": str(ingest_id),
-        "content_size": len(content),
-    }
-
     # Log upload attempt
-    logger.info("Starting S3 upload", extra=extra_fields)
+    logger.info(f"Starting S3 upload - bucket: {bucket_name}, path: {s3_file_path}, ingest_id: {ingest_id}, content_size: {len(content)}")
 
     try:
         # Upload the content with ingest_id as tag
@@ -193,15 +233,9 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
         )
     except ClientError as err:
         # Log upload failure
-        logger.exception(
-            "S3 upload failed",
-            extra={
-                "bucket_name": bucket_name,
-                "s3_file_path": s3_file_path,
-                "ingest_id": str(ingest_id),
-                "error_code": err.response.get("Error", {}).get("Code"),
-                "error_message": str(err),
-            },
+        logger.error(
+            f"S3 upload failed - bucket: {bucket_name}, path: {s3_file_path}, ingest_id: {ingest_id}, "
+            f"error_code: {err.response.get('Error', {}).get('Code')}, error_message: {str(err)}"
         )
         msg = f"Failed to upload to S3: {err}"
         raise S3UploadError(msg) from err
@@ -220,15 +254,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
             public_url = f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{s3_file_path}"
 
     # Log successful upload
-    logger.info(
-        "S3 upload completed successfully",
-        extra={
-            "bucket_name": bucket_name,
-            "s3_file_path": s3_file_path,
-            "ingest_id": str(ingest_id),
-            "public_url": public_url,
-        },
-    )
+    logger.info(f"S3 upload completed successfully - bucket: {bucket_name}, path: {s3_file_path}, ingest_id: {ingest_id}, public_url: {public_url}")
 
     return public_url
 
@@ -252,10 +278,30 @@ def _build_s3_url(key: str) -> str:
 def _check_object_tags(s3_client: BaseClient, bucket_name: str, key: str, target_ingest_id: UUID) -> bool:
     """Check if an S3 object has the matching ingest_id tag."""
     try:
+        logger.info(f"Checking tags for S3 object: {key}, target_ingest_id: {target_ingest_id}")
+        
         tags_response = s3_client.get_object_tagging(Bucket=bucket_name, Key=key)
         tags = {tag["Key"]: tag["Value"] for tag in tags_response.get("TagSet", [])}
-        return tags.get("ingest_id") == str(target_ingest_id)
-    except ClientError:
+        
+        logger.info(f"S3 object tags retrieved - key: {key}, target_ingest_id: {target_ingest_id}, tags: {tags}")
+        
+        match_found = tags.get("ingest_id") == str(target_ingest_id)
+        if match_found:
+            logger.info(f"Tag match found for {key}, target_ingest_id: {target_ingest_id}")
+        
+        return match_found
+        
+    except ClientError as err:
+        logger.warning(
+            f"Failed to get object tags - key: {key}, target_ingest_id: {target_ingest_id}, "
+            f"error_code: {err.response.get('Error', {}).get('Code')}, error_message: {str(err)}"
+        )
+        return False
+    except Exception as err:
+        logger.warning(
+            f"Unexpected error checking object tags - key: {key}, target_ingest_id: {target_ingest_id}, "
+            f"error_type: {type(err).__name__}, error_message: {str(err)}"
+        )
         return False
 
 
@@ -277,27 +323,47 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
 
     """
     if not is_s3_enabled():
-        logger.info("S3 not enabled, skipping URL lookup for ingest_id: %s", ingest_id)
+        logger.info(f"S3 not enabled, skipping URL lookup for ingest_id: {ingest_id}")
         return None
 
-    logger.info(msg="Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
+    logger.info(f"Starting S3 URL lookup for ingest_id: {ingest_id}")
 
     try:
         s3_client = create_s3_client()
         bucket_name = get_s3_bucket_name()
+        
+        logger.info(f"S3 lookup initialized - ingest_id: {ingest_id}, bucket_name: {bucket_name}")
 
         # List all objects in the ingest/ prefix and check their tags
-        paginator = s3_client.get_paginator("list_objects_v2")
-        page_iterator = paginator.paginate(Bucket=bucket_name, Prefix="ingest/")
+        try:
+            paginator = s3_client.get_paginator("list_objects_v2")
+            page_iterator = paginator.paginate(Bucket=bucket_name, Prefix="ingest/")
+            
+            logger.info(f"S3 paginator created, starting object scan - ingest_id: {ingest_id}, bucket_name: {bucket_name}, prefix: ingest/")
+        except ClientError as paginator_err:
+            logger.error(
+                f"Failed to create S3 paginator - ingest_id: {ingest_id}, bucket_name: {bucket_name}, "
+                f"error_code: {paginator_err.response.get('Error', {}).get('Code')}, error_message: {str(paginator_err)}"
+            )
+            return None
 
         objects_checked = 0
+        pages_processed = 0
+        
         for page in page_iterator:
+            pages_processed += 1
+            logger.info(f"Processing S3 page {pages_processed} - ingest_id: {ingest_id}")
+            
             if "Contents" not in page:
+                logger.info(f"S3 page {pages_processed} has no contents - ingest_id: {ingest_id}")
                 continue
 
             for obj in page["Contents"]:
                 key = obj["Key"]
                 objects_checked += 1
+                
+                logger.info(f"Checking S3 object {objects_checked}: {key} - ingest_id: {ingest_id}")
+                
                 if _check_object_tags(
                     s3_client=s3_client,
                     bucket_name=bucket_name,
@@ -306,19 +372,26 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                 ):
                     s3_url = _build_s3_url(key)
                     logger.info(
-                        msg=f"Found S3 object for ingest ID: {ingest_id}, s3_key: {key}, s3_url: {s3_url}, objects_checked: {objects_checked}",
+                        f"Found matching S3 object for ingest ID - ingest_id: {ingest_id}, s3_key: {key}, "
+                        f"s3_url: {s3_url}, objects_checked: {objects_checked}, pages_processed: {pages_processed}"
                     )
                     return s3_url
 
         logger.info(
-            msg=f"No S3 obj for ingest_id={ingest_id} (checked {objects_checked}, bucket_name={bucket_name})",
+            f"No matching S3 object found for ingest ID - ingest_id: {ingest_id}, objects_checked: {objects_checked}, "
+            f"pages_processed: {pages_processed}, bucket_name: {bucket_name}"
         )
 
     except ClientError as err:
-        logger.exception(
-            f"Error during S3 URL lookup for ingest_id={ingest_id}, "
-            f"error_code={err.response.get('Error', {}).get('Code')}, "
-            f"error_message={err}"
+        logger.error(
+            f"S3 client error during URL lookup - ingest_id: {ingest_id}, "
+            f"error_code: {err.response.get('Error', {}).get('Code')}, error_message: {str(err)}, "
+            f"bucket_name: {get_s3_bucket_name()}"
+        )
+    except Exception as err:
+        logger.error(
+            f"Unexpected error during S3 URL lookup - ingest_id: {ingest_id}, "
+            f"error_type: {type(err).__name__}, error_message: {str(err)}"
         )
 
     return None

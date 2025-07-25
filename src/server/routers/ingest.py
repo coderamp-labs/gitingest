@@ -128,36 +128,127 @@ async def download_ingest(
 
     """
     logger = logging.getLogger(__name__)
+    
+    logger.info("Download request received", extra={
+        "ingest_id": str(ingest_id),
+        "s3_enabled": is_s3_enabled()
+    })
+    
     # Check if S3 is enabled and file exists in S3
-    logger.info(f"Checking if S3 is enabled and file exists in S3 for ingest ID: {ingest_id}")
     if is_s3_enabled():
-        logger.info(f"S3 is enabled, checking if file exists in S3 for ingest ID: {ingest_id}")
-        s3_url = get_s3_url_for_ingest_id(ingest_id)
-        if s3_url:
-            logger.info(f"File exists in S3, redirecting to S3 URL: {s3_url}")
-            return RedirectResponse(url=s3_url, status_code=302)
+        logger.info("S3 is enabled, attempting S3 URL lookup", extra={"ingest_id": str(ingest_id)})
+        
+        try:
+            s3_url = get_s3_url_for_ingest_id(ingest_id)
+            if s3_url:
+                logger.info("File found in S3, redirecting", extra={
+                    "ingest_id": str(ingest_id),
+                    "s3_url": s3_url,
+                    "redirect_status": 302
+                })
+                return RedirectResponse(url=s3_url, status_code=302)
+            else:
+                logger.info("File not found in S3, falling back to local file", extra={
+                    "ingest_id": str(ingest_id)
+                })
+        except Exception as s3_err:
+            logger.error("Error during S3 URL lookup, falling back to local file", extra={
+                "ingest_id": str(ingest_id),
+                "error_type": type(s3_err).__name__,
+                "error_message": str(s3_err)
+            })
+    else:
+        logger.info("S3 is disabled, serving local file", extra={"ingest_id": str(ingest_id)})
 
     # Fall back to local file serving
+    logger.info("Attempting local file serving", extra={"ingest_id": str(ingest_id)})
+    
     # Normalize and validate the directory path
     directory = (TMP_BASE_PATH / str(ingest_id)).resolve()
+    
+    logger.debug("Local directory path resolved", extra={
+        "ingest_id": str(ingest_id),
+        "directory_path": str(directory),
+        "tmp_base_path": str(TMP_BASE_PATH.resolve())
+    })
+    
     if not str(directory).startswith(str(TMP_BASE_PATH.resolve())):
+        logger.error("Invalid ingest ID - path traversal attempt", extra={
+            "ingest_id": str(ingest_id),
+            "directory_path": str(directory),
+            "tmp_base_path": str(TMP_BASE_PATH.resolve())
+        })
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Invalid ingest ID: {ingest_id!r}")
 
     if not directory.is_dir():
+        logger.error("Digest directory not found", extra={
+            "ingest_id": str(ingest_id),
+            "directory_path": str(directory),
+            "directory_exists": directory.exists(),
+            "is_directory": directory.is_dir() if directory.exists() else False
+        })
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Digest {ingest_id!r} not found")
 
     try:
+        # List all txt files for debugging
+        txt_files = list(directory.glob("*.txt"))
+        logger.debug("Found txt files in directory", extra={
+            "ingest_id": str(ingest_id),
+            "directory_path": str(directory),
+            "txt_files_count": len(txt_files),
+            "txt_files": [f.name for f in txt_files]
+        })
+        
         first_txt_file = next(directory.glob("*.txt"))
+        
+        logger.info("Selected txt file for download", extra={
+            "ingest_id": str(ingest_id),
+            "selected_file": first_txt_file.name,
+            "file_path": str(first_txt_file),
+            "file_size": first_txt_file.stat().st_size if first_txt_file.exists() else "unknown"
+        })
+        
     except StopIteration as exc:
+        # List all files in directory for debugging
+        all_files = list(directory.glob("*"))
+        logger.error("No txt file found in digest directory", extra={
+            "ingest_id": str(ingest_id),
+            "directory_path": str(directory),
+            "all_files_count": len(all_files),
+            "all_files": [f.name for f in all_files],
+            "s3_enabled": is_s3_enabled()
+        })
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No .txt file found for digest {ingest_id!r}, s3_enabled: {is_s3_enabled()}"
         ) from exc
 
     try:
+        logger.info("Serving local file", extra={
+            "ingest_id": str(ingest_id),
+            "file_name": first_txt_file.name,
+            "file_path": str(first_txt_file),
+            "media_type": "text/plain"
+        })
         return FileResponse(path=first_txt_file, media_type="text/plain", filename=first_txt_file.name)
     except PermissionError as exc:
+        logger.error("Permission denied accessing file", extra={
+            "ingest_id": str(ingest_id),
+            "file_path": str(first_txt_file),
+            "error_message": str(exc)
+        })
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied for {first_txt_file}",
+        ) from exc
+    except Exception as exc:
+        logger.error("Unexpected error serving local file", extra={
+            "ingest_id": str(ingest_id),
+            "file_path": str(first_txt_file),
+            "error_type": type(exc).__name__,
+            "error_message": str(exc)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error serving file for digest {ingest_id!r}",
         ) from exc
