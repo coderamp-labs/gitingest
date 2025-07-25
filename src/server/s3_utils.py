@@ -153,8 +153,8 @@ def create_s3_client() -> BaseClient:
         has_secret_key = bool(log_config.pop("aws_secret_access_key", None))
         
         logger.info(
-            f"Creating S3 client - endpoint: {log_config.get('endpoint_url', 'DEFAULT_AWS')}, "
-            f"region: {log_config.get('region_name', 'us-east-1')}, "
+            f"Creating S3 client - endpoint: {log_config.get('endpoint_url', 'NOT_SET')}, "
+            f"region: {log_config.get('region_name', 'NOT_SET')}, "
             f"has_access_key: {has_access_key}, has_secret_key: {has_secret_key}, "
             f"credentials_provided: {has_access_key and has_secret_key}"
         )
@@ -335,11 +335,20 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
         logger.info(f"S3 lookup initialized - ingest_id: {ingest_id}, bucket_name: {bucket_name}")
 
         # List all objects in the ingest/ prefix and check their tags
+        # Include S3_DIRECTORY_PREFIX if set
+        search_prefix = "ingest/"
+        s3_directory_prefix = os.getenv("S3_DIRECTORY_PREFIX")
+        if s3_directory_prefix:
+            search_prefix = f"{s3_directory_prefix.rstrip('/')}/ingest/"
+            logger.info(f"Using S3 directory prefix for search - ingest_id: {ingest_id}, directory_prefix: {s3_directory_prefix}")
+        else:
+            logger.info(f"No S3 directory prefix set, using default search - ingest_id: {ingest_id}")
+        
         try:
             paginator = s3_client.get_paginator("list_objects_v2")
-            page_iterator = paginator.paginate(Bucket=bucket_name, Prefix="ingest/")
+            page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=search_prefix)
             
-            logger.info(f"S3 paginator created, starting object scan - ingest_id: {ingest_id}, bucket_name: {bucket_name}, prefix: ingest/")
+            logger.info(f"S3 paginator created, starting object scan - ingest_id: {ingest_id}, bucket_name: {bucket_name}, prefix: {search_prefix}")
         except ClientError as paginator_err:
             logger.error(
                 f"Failed to create S3 paginator - ingest_id: {ingest_id}, bucket_name: {bucket_name}, "
