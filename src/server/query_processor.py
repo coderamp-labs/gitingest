@@ -10,10 +10,8 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
-from gitingest.utils.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
-
-
+from server.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
 from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import Colors, log_slider_to_size
 
@@ -48,6 +46,11 @@ async def process_query(
     IngestResponse
         A union type, corresponding to IngestErrorResponse or IngestSuccessResponse
 
+    Raises
+    ------
+    RuntimeError
+        If the commit hash is not found (should never happen).
+
     """
     if token:
         validate_github_token(token)
@@ -75,7 +78,8 @@ async def process_query(
 
     # The commit hash should always be available at this point
     if not query.commit:
-        raise RuntimeError("Unexpected error: no commit hash found")
+        msg = "Unexpected error: no commit hash found"
+        raise RuntimeError(msg)
 
     try:
         summary, tree, content = ingest_query(query)
@@ -90,7 +94,6 @@ async def process_query(
                 source=query.url,
                 user_name=cast("str", query.user_name),
                 repo_name=cast("str", query.repo_name),
-                branch=query.branch,
                 commit=query.commit,
                 include_patterns=query.include_patterns,
                 ignore_patterns=query.ignore_patterns,

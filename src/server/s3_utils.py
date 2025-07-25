@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 from uuid import UUID  # noqa: TC003 (typing-only-standard-library-import) needed for type checking (pydantic)
 
 import boto3
-from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 
-from gitingest.utils.logging_config import get_logger, log_with_extra
+if TYPE_CHECKING:
+    from botocore.client import BaseClient
 
 # Initialize logger for this module
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class S3UploadError(Exception):
@@ -27,27 +30,13 @@ def is_s3_enabled() -> bool:
 
 def get_s3_config() -> dict[str, str | None]:
     """Get S3 configuration from environment variables."""
-    config = {}
-
-    # Only include endpoint_url if it's set (for custom S3-compatible services)
-    endpoint_url = os.getenv("S3_ENDPOINT")
-    if endpoint_url:
-        config["endpoint_url"] = endpoint_url
-
-    # Only include credentials if they're explicitly set
-    access_key = os.getenv("S3_ACCESS_KEY")
-    if access_key:
-        config["aws_access_key_id"] = access_key
-
-    secret_key = os.getenv("S3_SECRET_KEY")
-    if secret_key:
-        config["aws_secret_access_key"] = secret_key
-
-    # For region, check S3_REGION first, then fall back to AWS_REGION
-    region = os.getenv("S3_REGION") or os.getenv("AWS_REGION", "us-east-1")
-    config["region_name"] = region
-
-    return config
+    config = {
+        "endpoint_url": os.getenv("S3_ENDPOINT"),
+        "aws_access_key_id": os.getenv("S3_ACCESS_KEY"),
+        "aws_secret_access_key": os.getenv("S3_SECRET_KEY"),
+        "region_name": os.getenv("S3_REGION") or os.getenv("AWS_REGION", "us-east-1"),
+    }
+    return {k: v for k, v in config.items() if v is not None}
 
 
 def get_s3_bucket_name() -> str:
@@ -64,7 +53,6 @@ def generate_s3_file_path(
     source: str,
     user_name: str,
     repo_name: str,
-    branch: str | None,
     commit: str,
     include_patterns: set[str] | None,
     ignore_patterns: set[str],
@@ -86,8 +74,6 @@ def generate_s3_file_path(
         Repository owner or user.
     repo_name : str
         Repository name.
-    branch : str | None
-        Branch name (if available).
     commit : str
         Commit hash.
     include_patterns : set[str] | None
@@ -100,52 +86,57 @@ def generate_s3_file_path(
     str
         S3 file path string.
 
-    """
-    # Extract source from URL or default to "unknown"
-    if "github.com" in source:
-        git_source = "github"
-    elif "gitlab.com" in source:
-        git_source = "gitlab"
-    elif "bitbucket.org" in source:
-        git_source = "bitbucket"
-    else:
-        git_source = "unknown"
+    Raises
+    ------
+    ValueError
+        If the source URL is invalid.
 
-    # Use branch, fallback to "main" if neither branch nor commit
-    branch_name = branch or "main"
+    """
+    hostname = urlparse(source).hostname
+    if hostname is None:
+        msg = "Invalid source URL"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    # Extract source from URL or default to "unknown"
+    git_source = {
+        "github.com": "github",
+        "gitlab.com": "gitlab",
+        "bitbucket.org": "bitbucket",
+    }.get(hostname, "unknown")
 
     # Create hash of exclude/include patterns for uniqueness
     patterns_str = f"include:{sorted(include_patterns) if include_patterns else []}"
     patterns_str += f"exclude:{sorted(ignore_patterns)}"
-
     patterns_hash = hashlib.sha256(patterns_str.encode()).hexdigest()[:16]
 
     # Build the base path
-    base_path = f"ingest/{git_source}/{user_name}/{repo_name}/{branch_name}/{commit}/{patterns_hash}.txt"
+    base_path = f"ingest/{git_source}/{user_name}/{repo_name}/{commit}/{patterns_hash}.txt"
 
     # Check for S3_DIRECTORY_PREFIX environment variable
     s3_directory_prefix = os.getenv("S3_DIRECTORY_PREFIX")
-    if s3_directory_prefix:
-        # Remove trailing slash if present and add the prefix
-        s3_directory_prefix = s3_directory_prefix.rstrip("/")
-        return f"{s3_directory_prefix}/{base_path}"
 
-    return base_path
+    if not s3_directory_prefix:
+        return base_path
+
+    # Remove trailing slash if present and add the prefix
+    s3_directory_prefix = s3_directory_prefix.rstrip("/")
+    return f"{s3_directory_prefix}/{base_path}"
 
 
 def create_s3_client() -> BaseClient:
     """Create and return an S3 client with configuration from environment."""
     config = get_s3_config()
-
-    # Log S3 client creation with configuration details (excluding sensitive info)
-    log_config = {k: v for k, v in config.items() if k not in ["aws_access_key_id", "aws_secret_access_key"]}
-
-    extra_fields = {
-        "s3_config": log_config,
-        "has_credentials": bool(config.get("aws_access_key_id")),
-    }
-    log_with_extra(logger=logger, level="debug", message="Creating S3 client", **extra_fields)
-
+    # Log S3 client creation (excluding sensitive info)
+    log_config = config.copy()
+    has_credentials = bool(log_config.pop("aws_access_key_id", None) or log_config.pop("aws_secret_access_key", None))
+    logger.debug(
+        msg="Creating S3 client",
+        extra={
+            "s3_config": log_config,
+            "has_credentials": has_credentials,
+        },
+    )
     return boto3.client("s3", **config)
 
 
@@ -179,6 +170,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     """
     if not is_s3_enabled():
         msg = "S3 is not enabled"
+        logger.error(msg)
         raise ValueError(msg)
 
     s3_client = create_s3_client()
@@ -192,7 +184,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     }
 
     # Log upload attempt
-    log_with_extra(logger=logger, level="debug", message="Starting S3 upload", **extra_fields)
+    logger.debug("Starting S3 upload", extra=extra_fields)
 
     try:
         # Upload the content with ingest_id as tag
@@ -203,20 +195,20 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
             ContentType="text/plain",
             Tagging=f"ingest_id={ingest_id!s}",
         )
-    except ClientError as e:
+    except ClientError as err:
         # Log upload failure
-        log_with_extra(
-            logger=logger,
-            level="error",
-            message="S3 upload failed",
-            bucket_name=bucket_name,
-            s3_file_path=s3_file_path,
-            ingest_id=str(ingest_id),
-            error_code=e.response.get("Error", {}).get("Code"),
-            error_message=str(e),
+        logger.exception(
+            "S3 upload failed",
+            extra={
+                "bucket_name": bucket_name,
+                "s3_file_path": s3_file_path,
+                "ingest_id": str(ingest_id),
+                "error_code": err.response.get("Error", {}).get("Code"),
+                "error_message": str(err),
+            },
         )
-        msg = f"Failed to upload to S3: {e}"
-        raise S3UploadError(msg) from e
+        msg = f"Failed to upload to S3: {err}"
+        raise S3UploadError(msg) from err
 
     # Generate public URL
     alias_host = get_s3_alias_host()
@@ -232,14 +224,14 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
             public_url = f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{s3_file_path}"
 
     # Log successful upload
-    log_with_extra(
-        logger=logger,
-        level="debug",
-        message="S3 upload completed successfully",
-        bucket_name=bucket_name,
-        s3_file_path=s3_file_path,
-        ingest_id=str(ingest_id),
-        public_url=public_url,
+    logger.debug(
+        "S3 upload completed successfully",
+        extra={
+            "bucket_name": bucket_name,
+            "s3_file_path": s3_file_path,
+            "ingest_id": str(ingest_id),
+            "public_url": public_url,
+        },
     )
 
     return public_url
@@ -250,12 +242,15 @@ def _build_s3_url(key: str) -> str:
     alias_host = get_s3_alias_host()
     if alias_host:
         return f"{alias_host.rstrip('/')}/{key}"
-    endpoint = get_s3_config()["endpoint_url"]
-    if endpoint:
-        bucket_name = get_s3_bucket_name()
-        return f"{endpoint.rstrip('/')}/{bucket_name}/{key}"
+
     bucket_name = get_s3_bucket_name()
-    return f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{key}"
+    config = get_s3_config()
+
+    endpoint = config["endpoint_url"]
+    if endpoint:
+        return f"{endpoint.rstrip('/')}/{bucket_name}/{key}"
+
+    return f"https://{bucket_name}.s3.{config['region_name']}.amazonaws.com/{key}"
 
 
 def _check_object_tags(s3_client: BaseClient, bucket_name: str, key: str, target_ingest_id: UUID) -> bool:
@@ -289,8 +284,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
         logger.debug("S3 not enabled, skipping URL lookup for ingest_id: %s", ingest_id)
         return None
 
-    extra_fields = {"ingest_id": str(ingest_id)}
-    log_with_extra(logger=logger, level="debug", message="Starting S3 URL lookup for ingest ID", **extra_fields)
+    logger.debug(msg="Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
 
     try:
         s3_client = create_s3_client()
@@ -315,42 +309,33 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     target_ingest_id=ingest_id,
                 ):
                     s3_url = _build_s3_url(key)
-                    extra_fields = {
-                        "ingest_id": str(ingest_id),
-                        "s3_key": key,
-                        "s3_url": s3_url,
-                        "objects_checked": objects_checked,
-                    }
-                    log_with_extra(
-                        logger=logger,
-                        level="debug",
-                        message="Found S3 object for ingest ID",
-                        **extra_fields
+                    logger.debug(
+                        msg="Found S3 object for ingest ID",
+                        extra={
+                            "ingest_id": str(ingest_id),
+                            "s3_key": key,
+                            "s3_url": s3_url,
+                            "objects_checked": objects_checked,
+                        },
                     )
                     return s3_url
 
-        extra_fields = {
-            "ingest_id": str(ingest_id),
-            "objects_checked": objects_checked,
-        }
-        log_with_extra(
-            logger=logger,
-            level="debug",
-            message="No S3 object found for ingest ID",
-            **extra_fields
+        logger.debug(
+            msg="No S3 object found for ingest ID",
+            extra={
+                "ingest_id": str(ingest_id),
+                "objects_checked": objects_checked,
+            },
         )
 
     except ClientError as err:
-        extra_fields = {
-            "ingest_id": str(ingest_id),
-            "error_code": err.response.get("Error", {}).get("Code"),
-            "error_message": str(err),
-        }
-        log_with_extra(
-            logger=logger,
-            level="error",
-            message="Error during S3 URL lookup",
-            **extra_fields
+        logger.exception(
+            msg="Error during S3 URL lookup",
+            extra={
+                "ingest_id": str(ingest_id),
+                "error_code": err.response.get("Error", {}).get("Code"),
+                "error_message": str(err),
+            },
         )
 
     return None

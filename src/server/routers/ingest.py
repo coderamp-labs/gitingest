@@ -8,9 +8,9 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from prometheus_client import Counter
 
 from gitingest.config import TMP_BASE_PATH
-from gitingest.utils.s3_utils import get_s3_url_for_ingest_id, is_s3_enabled
 from server.models import IngestRequest
 from server.routers_utils import COMMON_INGEST_RESPONSES, _perform_ingestion
+from server.s3_utils import get_s3_url_for_ingest_id, is_s3_enabled
 from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import limiter
 
