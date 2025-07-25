@@ -220,7 +220,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     bucket_name = get_s3_bucket_name()
 
     # Log upload attempt
-    logger.info(f"Starting S3 upload - bucket: {bucket_name}, path: {s3_file_path}, ingest_id: {ingest_id}, content_size: {len(content)}")
+    logger.info(f"Starting S3 upload - ingest_id: {ingest_id}, EXACT_UPLOAD: s3://{bucket_name}/{s3_file_path}, content_size: {len(content)}")
 
     try:
         # Upload the content with ingest_id as tag
@@ -348,7 +348,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
             paginator = s3_client.get_paginator("list_objects_v2")
             page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=search_prefix)
             
-            logger.info(f"S3 paginator created, starting object scan - ingest_id: {ingest_id}, bucket_name: {bucket_name}, prefix: {search_prefix}")
+            logger.info(f"S3 paginator created, starting object scan - ingest_id: {ingest_id}, EXACT_SEARCH: s3://{bucket_name}/{search_prefix}")
         except ClientError as paginator_err:
             logger.error(
                 f"Failed to create S3 paginator - ingest_id: {ingest_id}, bucket_name: {bucket_name}, "
