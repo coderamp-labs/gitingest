@@ -102,7 +102,7 @@ async def process_query(
     return IngestSuccessResponse(
         repo_url=input_text,
         short_repo_url=short_repo_url,
-        summary="",
+        summary=context.summary,
         ingest_id=query.id,
         tree="",
         content=digest,
