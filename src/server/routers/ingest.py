@@ -19,6 +19,12 @@ ingest_counter = Counter("gitingest_ingest_total", "Number of ingests", ["status
 
 router = APIRouter()
 
+# Configure basic logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 @router.post("/api/ingest", responses=COMMON_INGEST_RESPONSES)
 @limiter.limit("10/minute")
@@ -95,7 +101,6 @@ async def api_ingest_get(
     return response
 
 
-logger = logging.getLogger(__name__)
 
 @router.get("/api/download/file/{ingest_id}", response_model=None)
 async def download_ingest(
@@ -122,6 +127,7 @@ async def download_ingest(
     - **HTTPException**: **403** - the process lacks permission to read the directory or file
 
     """
+    logger = logging.getLogger(__name__)
     # Check if S3 is enabled and file exists in S3
     logger.info(f"Checking if S3 is enabled and file exists in S3 for ingest ID: {ingest_id}")
     if is_s3_enabled():
@@ -145,7 +151,7 @@ async def download_ingest(
     except StopIteration as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No .txt file found for digest {ingest_id!r}",
+            detail=f"No .txt file found for digest {ingest_id!r}, s3_enabled: {is_s3_enabled()}"
         ) from exc
 
     try:

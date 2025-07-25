@@ -54,12 +54,17 @@ services:
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-gitingest-bucket}
       - S3_REGION=${S3_REGION:-us-east-1}
       # Public URL for S3 resources
-      - S3_ALIAS_HOST=${S3_ALIAS_HOST:-http://127.0.0.1:9000/${S3_BUCKET_NAME:-gitingest-bucket}}
+      - S3_ALIAS_HOST=https://d3pi02tcpwm9y3.cloudfront.net
     volumes:
       # Mount source code for live development
       - ./src:/app:ro
-    # Use --reload flag for hot reloading during development
-    command: ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # Expose debugpy port for remote debugging
+    ports:
+      - "5678:5678"
+      - "${APP_WEB_BIND:-8000}:8000"
+      - "${GITINGEST_METRICS_HOST:-127.0.0.1}:${GITINGEST_METRICS_PORT:-9090}:9090"
+    # Start with debugpy for remote attach
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       minio-setup:
         condition: service_completed_successfully

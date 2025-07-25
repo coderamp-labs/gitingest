@@ -25,8 +25,8 @@ class S3UploadError(Exception):
 
 def is_s3_enabled() -> bool:
     """Check if S3 is enabled via environment variables."""
-    return os.getenv("S3_ENABLED", "false").lower() == "true"
 
+    return os.getenv("S3_ENABLED", "false").lower() == "true"
 
 def get_s3_config() -> dict[str, str | None]:
     """Get S3 configuration from environment variables."""
