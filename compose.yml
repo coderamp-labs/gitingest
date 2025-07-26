@@ -53,6 +53,7 @@ services:
       # Use lowercase bucket name to ensure compatibility with MinIO
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-gitingest-bucket}
       - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_DIRECTORY_PREFIX=${S3_DIRECTORY_PREFIX:-dev}
       # Public URL for S3 resources
       - S3_ALIAS_HOST=${S3_ALIAS_HOST:-http://127.0.0.1:9000/${S3_BUCKET_NAME:-gitingest-bucket}}
     volumes:
