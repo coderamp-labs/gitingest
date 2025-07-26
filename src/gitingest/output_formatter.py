@@ -194,8 +194,9 @@ def _format_token_count(text: str) -> str | None:
     except (ValueError, UnicodeEncodeError) as exc:
         print(exc)
         return None
-    except (requests.exceptions.RequestException, ssl.SSLError):
-        # If network errors, silently skip token count estimation instead of erroring out
+    except (requests.exceptions.RequestException, ssl.SSLError) as exc:
+        # If network errors, skip token count estimation instead of erroring out
+        print(f"Failed to download tiktoken model: {exc}")
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:
