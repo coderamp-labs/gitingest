@@ -1,6 +1,6 @@
 name: Manage PR Temp Envs
 'on':
-  pull_request:
+  pull_request_target:
     types:
       - labeled
       - unlabeled
