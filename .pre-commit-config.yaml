@@ -89,7 +89,7 @@ repos:
     hooks:
       - id: markdownlint
         description: 'Lint markdown files.'
-        args: ['--disable=line-length']
+        args: ['--disable=line-length', '--ignore=CHANGELOG.md']
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.2
