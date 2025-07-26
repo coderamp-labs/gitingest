@@ -60,7 +60,8 @@ def generate_s3_file_path(
     """Generate S3 file path with proper naming convention.
 
     The file path is formatted as:
-    [<S3_DIRECTORY_PREFIX>/]ingest/<provider>/<repo-owner>/<repo-name>/<branch>/<commit-ID>/<exclude&include hash>.txt
+    [<S3_DIRECTORY_PREFIX>/]ingest/<provider>/<repo-owner>/<repo-name>/<branch>/<commit-ID>/
+    <exclude&include hash>/<owner>-<repo-name>.txt
 
     If S3_DIRECTORY_PREFIX environment variable is set, it will be prefixed to the path.
     The commit-ID is always included in the URL.
@@ -98,20 +99,13 @@ def generate_s3_file_path(
         logger.error(msg)
         raise ValueError(msg)
 
-    # Extract source from URL or default to "unknown"
-    git_source = {
-        "github.com": "github",
-        "gitlab.com": "gitlab",
-        "bitbucket.org": "bitbucket",
-    }.get(hostname, "unknown")
-
     # Create hash of exclude/include patterns for uniqueness
     patterns_str = f"include:{sorted(include_patterns) if include_patterns else []}"
     patterns_str += f"exclude:{sorted(ignore_patterns)}"
     patterns_hash = hashlib.sha256(patterns_str.encode()).hexdigest()[:16]
 
-    # Build the base path
-    base_path = f"ingest/{git_source}/{user_name}/{repo_name}/{commit}/{patterns_hash}.txt"
+    # Build the base path using hostname directly
+    base_path = f"ingest/{hostname}/{user_name}/{repo_name}/{commit}/{patterns_hash}/{user_name}-{repo_name}.txt"
 
     # Check for S3_DIRECTORY_PREFIX environment variable
     s3_directory_prefix = os.getenv("S3_DIRECTORY_PREFIX")
