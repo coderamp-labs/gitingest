@@ -8,9 +8,16 @@ function changePattern() {
 
     // Skip the first tree line element
     treeLineElements.slice(2).forEach((element) => {
-        element.classList.toggle('line-through');
-        element.classList.toggle('text-gray-500');
+        element.classList.remove('line-through');
+        element.classList.remove('text-gray-500');
     });
+
+    // Reset the pattern input field
+    const patternInput = document.getElementById('pattern');
+
+    if (patternInput) {
+        patternInput.value = '';
+    }
 }
 
 // Show/hide the Personal-Access-Token section when the "Private repository" checkbox is toggled.

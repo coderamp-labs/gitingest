@@ -32,7 +32,7 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   pip install -e ".[dev]"
+   pip install -e ".[dev,server]"
    pre-commit install
    ```
 

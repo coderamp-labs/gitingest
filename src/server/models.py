@@ -7,6 +7,8 @@ from typing import Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from gitingest.utils.compat_func import removesuffix
+
 # needed for type checking (pydantic)
 from server.form_types import IntForm, OptStrForm, StrForm  # noqa: TC001 (typing-only-first-party-import)
 
@@ -45,16 +47,16 @@ class IngestRequest(BaseModel):
     @field_validator("input_text")
     @classmethod
     def validate_input_text(cls, v: str) -> str:
-        """Validate that input_text is not empty."""
+        """Validate that ``input_text`` is not empty."""
         if not v.strip():
             err = "input_text cannot be empty"
             raise ValueError(err)
-        return v.strip()
+        return removesuffix(v.strip(), ".git")
 
     @field_validator("pattern")
     @classmethod
     def validate_pattern(cls, v: str) -> str:
-        """Validate pattern field."""
+        """Validate ``pattern`` field."""
         return v.strip()
 
 
@@ -69,8 +71,8 @@ class IngestSuccessResponse(BaseModel):
         Short form of repository URL (user/repo).
     summary : str
         Summary of the ingestion process including token estimates.
-    ingest_id : str
-        Ingestion id used to download full context.
+    digest_url : str
+        URL to download the full digest content (either S3 URL or local download endpoint).
     tree : str
         File tree structure of the repository.
     content : str
@@ -87,7 +89,7 @@ class IngestSuccessResponse(BaseModel):
     repo_url: str = Field(..., description="Original repository URL")
     short_repo_url: str = Field(..., description="Short repository URL (user/repo)")
     summary: str = Field(..., description="Ingestion summary with token estimates")
-    ingest_id: str = Field(..., description="Ingestion id used to download full context")
+    digest_url: str = Field(..., description="URL to download the full digest content")
     tree: str = Field(..., description="File tree structure")
     content: str = Field(..., description="Processed file content")
     default_max_file_size: int = Field(..., description="File size slider position used")

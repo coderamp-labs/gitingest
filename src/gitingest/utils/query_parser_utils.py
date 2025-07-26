@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import string
+import warnings
+from typing import TYPE_CHECKING, cast
+from urllib.parse import ParseResult, unquote, urlparse
+
+from gitingest.utils.compat_typing import StrEnum
+from gitingest.utils.git_utils import _resolve_ref_to_sha, check_repo_exists
+
+if TYPE_CHECKING:
+    from gitingest.schemas import IngestionQuery
+
 
 HEX_DIGITS: set[str] = set(string.hexdigits)
-
 
 KNOWN_GIT_HOSTS: list[str] = [
     "github.com",
@@ -15,6 +24,108 @@ KNOWN_GIT_HOSTS: list[str] = [
     "codeberg.org",
     "gist.github.com",
 ]
+
+
+class PathKind(StrEnum):
+    """Path kind enum."""
+
+    TREE = "tree"
+    BLOB = "blob"
+    ISSUES = "issues"
+    PULL = "pull"
+
+
+async def _fallback_to_root(query: IngestionQuery, token: str | None, warn_msg: str | None = None) -> IngestionQuery:
+    """Fallback to the root of the repository if no extra path parts are provided.
+
+    Parameters
+    ----------
+    query : IngestionQuery
+        The query to fallback to the root of the repository.
+    token : str | None
+        The token to use to access the repository.
+    warn_msg : str | None
+        The message to warn.
+
+    Returns
+    -------
+    IngestionQuery
+        The query with the fallback to the root of the repository.
+
+    """
+    url = cast("str", query.url)
+    query.commit = await _resolve_ref_to_sha(url, pattern="HEAD", token=token)
+    if warn_msg:
+        warnings.warn(warn_msg, RuntimeWarning, stacklevel=3)
+    return query
+
+
+async def _normalise_source(raw: str, token: str | None) -> ParseResult:
+    """Return a fully-qualified ParseResult or raise.
+
+    Parameters
+    ----------
+    raw : str
+        The raw URL to parse.
+    token : str | None
+        The token to use to access the repository.
+
+    Returns
+    -------
+    ParseResult
+        The parsed URL.
+
+    """
+    raw = unquote(raw)
+    parsed = urlparse(raw)
+
+    if parsed.scheme:
+        _validate_url_scheme(parsed.scheme)
+        _validate_host(parsed.netloc)
+        return parsed
+
+    # no scheme ('host/user/repo' or 'user/repo')
+    host = raw.split("/", 1)[0].lower()
+    if "." in host:
+        _validate_host(host)
+        return urlparse(f"https://{raw}")
+
+    # "user/repo" slug
+    host = await _try_domains_for_user_and_repo(*_get_user_and_repo_from_path(raw), token=token)
+
+    return urlparse(f"https://{host}/{raw}")
+
+
+async def _try_domains_for_user_and_repo(user_name: str, repo_name: str, token: str | None = None) -> str:
+    """Attempt to find a valid repository host for the given ``user_name`` and ``repo_name``.
+
+    Parameters
+    ----------
+    user_name : str
+        The username or owner of the repository.
+    repo_name : str
+        The name of the repository.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Returns
+    -------
+    str
+        The domain of the valid repository host.
+
+    Raises
+    ------
+    ValueError
+        If no valid repository host is found for the given ``user_name`` and ``repo_name``.
+
+    """
+    for domain in KNOWN_GIT_HOSTS:
+        candidate = f"https://{domain}/{user_name}/{repo_name}"
+        if await check_repo_exists(candidate, token=token if domain.startswith("github.") else None):
+            return domain
+
+    msg = f"Could not find a valid repository host for '{user_name}/{repo_name}'."
+    raise ValueError(msg)
 
 
 def _is_valid_git_commit_hash(commit: str) -> bool:
@@ -36,27 +147,6 @@ def _is_valid_git_commit_hash(commit: str) -> bool:
     """
     sha_hex_length = 40
     return len(commit) == sha_hex_length and all(c in HEX_DIGITS for c in commit)
-
-
-def _is_valid_pattern(pattern: str) -> bool:
-    """Validate if the given pattern contains only valid characters.
-
-    This function checks if the pattern contains only alphanumeric characters or one
-    of the following allowed characters: dash ('-'), underscore ('_'), dot ('.'),
-    forward slash ('/'), plus ('+'), asterisk ('*'), or the at sign ('@').
-
-    Parameters
-    ----------
-    pattern : str
-        The pattern to validate.
-
-    Returns
-    -------
-    bool
-        ``True`` if the pattern is valid, otherwise ``False``.
-
-    """
-    return all(c.isalnum() or c in "-_./+*@" for c in pattern)
 
 
 def _validate_host(host: str) -> None:

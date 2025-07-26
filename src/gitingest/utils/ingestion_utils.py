@@ -59,7 +59,7 @@ def _should_exclude(path: Path, base_path: Path, ignore_patterns: set[str]) -> b
 
     """
     rel_path = _relative_or_none(path, base_path)
-    if rel_path is None:  # outside repo → already “excluded”
+    if rel_path is None:  # outside repo → already "excluded"
         return True
 
     spec = PathSpec.from_lines("gitwildmatch", ignore_patterns)
