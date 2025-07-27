@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,8 @@ from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
+
+logger = logging.getLogger(__name__)
 
 
 def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
@@ -111,7 +114,7 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
             _process_symlink(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_file():
             if sub_path.stat().st_size > query.max_file_size:
-                print(f"Skipping file {sub_path}: would exceed max file size limit")
+                logger.info("Skipping file %s: would exceed max file size limit", sub_path)
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
@@ -133,7 +136,7 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
             node.file_count += child_directory_node.file_count
             node.dir_count += 1 + child_directory_node.dir_count
         else:
-            print(f"Warning: {sub_path} is an unknown file type, skipping")
+            logger.warning("Warning: %s is an unknown file type, skipping", sub_path)
 
     node.sort_children()
 
@@ -186,12 +189,12 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
 
     """
     if stats.total_files + 1 > MAX_FILES:
-        print(f"Maximum file limit ({MAX_FILES}) reached")
+        logger.warning("Maximum file limit (%i) reached", MAX_FILES)
         return
 
     file_size = path.stat().st_size
     if stats.total_size + file_size > MAX_TOTAL_SIZE_BYTES:
-        print(f"Skipping file {path}: would exceed total size limit")
+        logger.info("Skipping file %s: would exceed total size limit", path)
         return
 
     stats.total_files += 1
@@ -232,15 +235,15 @@ def limit_exceeded(stats: FileSystemStats, depth: int) -> bool:
 
     """
     if depth > MAX_DIRECTORY_DEPTH:
-        print(f"Maximum depth limit ({MAX_DIRECTORY_DEPTH}) reached")
+        logger.warning("Maximum depth limit (%i) reached", MAX_DIRECTORY_DEPTH)
         return True
 
     if stats.total_files >= MAX_FILES:
-        print(f"Maximum file limit ({MAX_FILES}) reached")
+        logger.warning("Maximum file limit (%i) reached", MAX_FILES)
         return True  # TODO: end recursion
 
     if stats.total_size >= MAX_TOTAL_SIZE_BYTES:
-        print(f"Maxumum total size limit ({MAX_TOTAL_SIZE_BYTES / 1024 / 1024:.1f}MB) reached")
+        logger.warning("Maxumum total size limit (%.1fMB) reached", MAX_TOTAL_SIZE_BYTES / 1024 / 1024)
         return True  # TODO: end recursion
 
     return False

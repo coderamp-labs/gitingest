@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import tiktoken
@@ -11,6 +12,8 @@ from gitingest.utils.compat_func import readlink
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
     (1_000_000, "M"),
@@ -189,8 +192,8 @@ def _format_token_count(text: str) -> str | None:
     try:
         encoding = tiktoken.get_encoding("o200k_base")  # gpt-4o, gpt-4o-mini
         total_tokens = len(encoding.encode(text, disallowed_special=()))
-    except (ValueError, UnicodeEncodeError) as exc:
-        print(exc)
+    except (ValueError, UnicodeEncodeError):
+        logger.exception()
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:

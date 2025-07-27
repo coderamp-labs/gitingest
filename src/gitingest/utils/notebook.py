@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import warnings
+import logging
 from itertools import chain
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +11,8 @@ from gitingest.utils.exceptions import InvalidNotebookError
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def process_notebook(file: Path, *, include_output: bool = True) -> str:
@@ -44,20 +46,16 @@ def process_notebook(file: Path, *, include_output: bool = True) -> str:
     # Check if the notebook contains worksheets
     worksheets = notebook.get("worksheets")
     if worksheets:
-        warnings.warn(
+        logger.warning(
             "Worksheets are deprecated as of IPEP-17. Consider updating the notebook. "
             "(See: https://github.com/jupyter/nbformat and "
             "https://github.com/ipython/ipython/wiki/IPEP-17:-Notebook-Format-4#remove-multiple-worksheets "
             "for more information.)",
-            DeprecationWarning,
-            stacklevel=2,
         )
 
         if len(worksheets) > 1:
-            warnings.warn(
+            logger.warning(
                 "Multiple worksheets detected. Combining all worksheets into a single script.",
-                UserWarning,
-                stacklevel=2,
             )
 
         cells = list(chain.from_iterable(ws["cells"] for ws in worksheets))

@@ -1,6 +1,7 @@
 """Utility functions for the server."""
 
 import asyncio
+import logging
 import math
 import shutil
 import time
@@ -19,6 +20,8 @@ from server.server_config import DELETE_REPO_AFTER, MAX_FILE_SIZE_KB, MAX_SLIDER
 
 # Initialize a rate limiter
 limiter = Limiter(key_func=get_remote_address)
+
+logger = logging.getLogger(__name__)
 
 
 async def rate_limit_exception_handler(request: Request, exc: Exception) -> Response:
@@ -104,8 +107,8 @@ async def _remove_old_repositories(
 
                 await _process_folder(folder)
 
-        except (OSError, PermissionError) as exc:
-            print(f"Error in _remove_old_repositories: {exc}")
+        except (OSError, PermissionError):
+            logger.exception("Exception in _remove_old_repositories")
 
         await asyncio.sleep(scan_interval)
 
@@ -134,16 +137,16 @@ async def _process_folder(folder: Path) -> None:
             owner, repo = filename.split("-", 1)
             repo_url = f"{owner}/{repo}"
             await loop.run_in_executor(None, _append_line, history_file, repo_url)
-    except (OSError, PermissionError) as exc:
-        print(f"Error logging repository URL for {folder}: {exc}")
+    except (OSError, PermissionError):
+        logger.exception("Exception raised while processing folder %s", folder)
 
     # Delete the cloned repo
     try:
         await loop.run_in_executor(None, shutil.rmtree, folder)
-    except PermissionError as exc:
-        print(f"No permission to delete {folder}: {exc}")
-    except OSError as exc:
-        print(f"Could not delete {folder}: {exc}")
+    except PermissionError:
+        logger.exception("No permission to delete %s", folder)
+    except OSError:
+        logger.exception("Could not delete %s", folder)
 
 
 def _append_line(path: Path, line: str) -> None:
