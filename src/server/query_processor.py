@@ -63,7 +63,7 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
-    query.max_file_size = max_file_size * 1024  # Convert to bits since we currently use KB in higher levels
+    query.max_file_size = max_file_size * 1024  # Convert to bytes since we currently use KB in higher levels
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
