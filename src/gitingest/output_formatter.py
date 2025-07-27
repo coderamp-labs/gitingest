@@ -11,10 +11,35 @@ import tiktoken
 from gitingest.schemas import FileSystemNode
 from gitingest.utils.compat_func import readlink
 from functools import singledispatchmethod
-from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink
-from gitingest.schemas.filesystem import SEPARATOR
+from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink, FileSystemTextFile
+from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType
 from gitingest.utils.logging_config import get_logger
 from jinja2 import Environment, BaseLoader
+
+
+class OverridableDispatcher:
+    """Custom dispatcher that allows later registrations to override earlier ones, even for parent types."""
+
+    def __init__(self, default_func):
+        self.default_func = default_func
+        self.registry = []  # List of (type, func) in registration order
+
+    def register(self, type_):
+        def decorator(func):
+            # Remove any existing registration for this exact type
+            self.registry = [(t, f) for t, f in self.registry if t != type_]
+            # Add new registration at the end (highest priority)
+            self.registry.append((type_, func))
+            return func
+        return decorator
+
+    def __call__(self, instance, *args, **kwargs):
+        # Check registrations in reverse order (most recent first)
+        for type_, func in reversed(self.registry):
+            if isinstance(instance, type_):
+                return func(instance, *args, **kwargs)
+        # Fall back to default
+        return self.default_func(instance, *args, **kwargs)
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
@@ -179,20 +204,26 @@ def _format_token_count(text: str) -> str | None:
 
 class DefaultFormatter:
     def __init__(self):
+        self.separator = SEPARATOR
         self.env = Environment(loader=BaseLoader())
 
-    @singledispatchmethod
-    def format(self, node: Source, query):
-        return f"{getattr(node, 'content', '')}"
+        # Set up custom dispatchers
+        def _default_format(node: Source, query):
+            return f"{getattr(node, 'content', '')}"
 
-    @singledispatchmethod
-    def summary(self, node: Source, query):
-        # Default summary: just the name
-        return f"{getattr(node, 'name', '')}"
+        def _default_summary(node: Source, query):
+            return f"{getattr(node, 'name', '')}"
 
-    @format.register
-    def _(self, node: FileSystemFile, query):
-        template = \
+        self.format = OverridableDispatcher(_default_format)
+        self.summary = OverridableDispatcher(_default_summary)
+
+        # Register the default implementations
+        self._register_defaults()
+
+    def _register_defaults(self):
+        @self.format.register(FileSystemFile)
+        def _(node: FileSystemFile, query):
+            template = \
 """
 {{ SEPARATOR }}
 {{ node.name }}
@@ -200,38 +231,63 @@ class DefaultFormatter:
 
 {{ node.content }}
 """
-        file_template = self.env.from_string(template)
-        return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+            file_template = self.env.from_string(template)
+            return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
 
-    @format.register
-    def _(self, node: FileSystemDirectory, query):
-        template = \
+        @self.format.register(FileSystemDirectory)
+        def _(node: FileSystemDirectory, query):
+            template = \
 """
 {% for child in node.children %}
 {{ formatter.format(child, query) }}
 {% endfor %}
 """
-        dir_template = self.env.from_string(template)
-        return dir_template.render(node=node, query=query, formatter=self)
+            dir_template = self.env.from_string(template)
+            return dir_template.render(node=node, query=query, formatter=self)
 
-    @summary.register
-    def _(self, node: FileSystemDirectory, query):
-        template = \
+        @self.summary.register(FileSystemDirectory)
+        def _(node: FileSystemDirectory, query):
+            template = \
 """
 Directory structure:
 {{ node.tree }}
 """
-        summary_template = self.env.from_string(template)
-        return summary_template.render(node=node, query=query, formatter=self)
+            summary_template = self.env.from_string(template)
+            return summary_template.render(node=node, query=query, formatter=self)
 
-
-    @format.register
-    def _(self, node: FileSystemSymlink, query):
-        template = \
+        @self.format.register(FileSystemSymlink)
+        def _(node: FileSystemSymlink, query):
+            template = \
 """
 {{ SEPARATOR }}
 {{ node.name }}{% if node.target %} -> {{ node.target }}{% endif %}
 {{ SEPARATOR }}
 """
-        symlink_template = self.env.from_string(template)
-        return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+            symlink_template = self.env.from_string(template)
+            return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+
+class StupidFormatter(DefaultFormatter):
+    def __init__(self):
+        super().__init__()
+
+        @self.summary.register(FileSystemTextFile)
+        def _(node: FileSystemTextFile, query):
+            template = \
+"""
+{{ SEPARATOR }}
+{{ node.name }}
+{{ SEPARATOR }}
+FileSystemTextFile
+"""
+
+        @self.format.register(FileSystemFile)
+        def _(node: FileSystemFile, query):
+            template = \
+"""
+{{ SEPARATOR }}
+{{ node.name }}
+{{ SEPARATOR }}
+FileSystemFile
+"""
+            file_template = self.env.from_string(template)
+            return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
