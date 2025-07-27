@@ -2,12 +2,6 @@
 
 ## [0.2.0](https://github.com/coderamp-labs/gitingest/compare/v0.1.5...v0.2.0) (2025-07-26)
 
-
-### ⚠ BREAKING CHANGES
-
-* 
-* 
-
 ### Features
 
 * `include_submodules` option ([#313](https://github.com/coderamp-labs/gitingest/issues/313)) ([38c2317](https://github.com/coderamp-labs/gitingest/commit/38c23171a14556a2cdd05c0af8219f4dc789defd))
