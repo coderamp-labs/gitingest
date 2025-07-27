@@ -37,7 +37,7 @@ jobs:
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.CODERAMP_AWS_ECR_REGISTRY_PUSH_ROLE_ARN }}
+          role-to-assume: ${{ secrets.CODERAMP_AWS_ECR_REGISTRY_PUSH_ROLE_ARN }}
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: eu-west-1
 
@@ -56,7 +56,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ vars.ECR_REGISTRY_URL }}
+            ${{ secrets.ECR_REGISTRY_URL }}
           flavor: |
             latest=false
           tags: |
