@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
+from gitingest.output_formatter import generate_digest
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
@@ -303,7 +304,7 @@ async def process_query(
 
     try:
         context = ingest_query(query)
-        digest = context.generate_digest()
+        digest = generate_digest(context)
 
         # Store digest based on S3 configuration
         if is_s3_enabled():
@@ -357,7 +358,7 @@ async def process_query(
         summary="",
         digest_url=digest_url,
         tree="",
-        content=content,
+        content=digest,
         default_max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,

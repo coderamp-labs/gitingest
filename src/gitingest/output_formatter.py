@@ -12,7 +12,7 @@ from gitingest.schemas import FileSystemNode
 from gitingest.utils.compat_func import readlink
 from functools import singledispatchmethod
 from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink, FileSystemTextFile
-from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType
+from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType, CONTEXT_HEADER, CONTEXT_FOOTER
 from gitingest.utils.logging_config import get_logger
 from jinja2 import Environment, BaseLoader
 
@@ -291,3 +291,27 @@ FileSystemFile
 """
             file_template = self.env.from_string(template)
             return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+
+
+def generate_digest(context) -> str:
+    """Generate a digest from a Context object.
+    
+    Parameters
+    ----------
+    context : Context
+        The context object containing nodes, formatter, and query.
+        
+    Returns
+    -------
+    str
+        The formatted digest string with header, content, and footer.
+    """
+    if context.query.user_name and context.query.repo_name:
+        context_header = CONTEXT_HEADER.format(f"/{context.query.user_name}/{context.query.repo_name}")
+    else:
+        context_header = CONTEXT_HEADER.format("")
+    context_footer = CONTEXT_FOOTER
+    formatted = []
+    for node in context.nodes:
+        formatted.append(context.formatter.format(node, context.query))
+    return context_header + "\n".join(formatted) + context_footer
