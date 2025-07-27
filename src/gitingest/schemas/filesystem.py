@@ -129,31 +129,22 @@ def _(self: 'FileSystemSymlink'):
 
 
 class Context:
-    """Context for holding a list of Source objects and generating a digest on demand using a Formatter.
+    """Context for holding a list of Source objects that can be formatted using a Formatter.
 
     Attributes
     ----------
     nodes : list[Source]
-        The list of source objects to generate a digest for.
+        The list of source objects to format.
     formatter : Formatter
         The formatter to use for formatting sources.
     query : IngestionQuery
         The query context.
     """
-    nodes: list[Source]
-    formatter: Formatter
-    query: IngestionQuery
-
-    def generate_digest(self) -> str:
-        if self.query.user_name and self.query.repo_name:
-            context_header = CONTEXT_HEADER.format(f"/{self.query.user_name}/{self.query.repo_name}")
-        else:
-            context_header = CONTEXT_HEADER.format("")
-        context_footer = CONTEXT_FOOTER
-        formatted = []
-        for node in self.nodes:
-            formatted.append(self.formatter.format(node, self.query))
-        return context_header + "\n".join(formatted) + context_footer
+    
+    def __init__(self, nodes: list[Source], formatter: Formatter, query: IngestionQuery):
+        self.nodes = nodes
+        self.formatter = formatter
+        self.query = query
 
     @property
     def summary(self):

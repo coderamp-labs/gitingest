@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from gitingest.clone import clone_repo
 from gitingest.config import MAX_FILE_SIZE
 from gitingest.ingestion import ingest_query
+from gitingest.output_formatter import generate_digest
 from gitingest.query_parser import parse_local_dir_path, parse_remote_repo
 from gitingest.utils.auth import resolve_token
 from gitingest.utils.compat_func import removesuffix
@@ -51,7 +52,7 @@ async def ingest_async(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a single digest string.
 
-    The output is generated lazily using a Context object and its .generate_digest() method.
+    The output is generated lazily using a Context object and the generate_digest() function.
 
     Parameters
     ----------
@@ -142,7 +143,7 @@ async def ingest_async(
         if output:
             logger.debug("Writing output to file", extra={"output_path": output})
         context = ingest_query(query)
-        digest = context.generate_digest()
+        digest = generate_digest(context)
         await _write_output(digest, content=None, target=output)
         logger.info("Ingestion completed successfully")
         return digest
@@ -166,7 +167,7 @@ def ingest(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a single digest string.
 
-    The output is generated lazily using a Context object and its .generate_digest() method.
+    The output is generated lazily using a Context object and the generate_digest() function.
 
     Parameters
     ----------
@@ -204,7 +205,7 @@ def ingest(
     ``ingest_async`` : The asynchronous version of this function.
 
     """
-    context = asyncio.run(ingest_async(
+    digest = asyncio.run(ingest_async(
         source,
         max_file_size=max_file_size,
         include_patterns=include_patterns,
@@ -216,7 +217,7 @@ def ingest(
         token=token,
         output=output,
     ))
-    return context.generate_digest()
+    return digest
 
 
 def _override_branch_and_tag(query: IngestionQuery, branch: str | None, tag: str | None) -> None:

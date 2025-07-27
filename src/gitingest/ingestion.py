@@ -33,7 +33,7 @@ def ingest_query(query: IngestionQuery) -> Context:
     Returns
     -------
     Context
-        A Context object representing the ingested file system nodes. Call .generate_digest() to get the summary, directory structure, and file contents.
+        A Context object representing the ingested file system nodes. Use generate_digest(context) to get the summary, directory structure, and file contents.
 
     Raises
     ------
