@@ -47,10 +47,7 @@ class IngestRequest(BaseModel):
     @field_validator("input_text")
     @classmethod
     def validate_input_text(cls, v: str) -> str:
-        """Validate that ``input_text`` is not empty."""
-        if not v.strip():
-            err = "input_text cannot be empty"
-            raise ValueError(err)
+        """Validate ``input_text`` field."""
         return removesuffix(v.strip(), ".git")
 
     @field_validator("pattern")

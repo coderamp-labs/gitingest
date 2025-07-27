@@ -40,6 +40,10 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
         A dictionary containing the parsed details of the repository.
 
     """
+    if not source.strip():
+        msg = "Invalid repository URL: cannot be empty or spaces only."
+        raise ValueError(msg)
+    
     parsed_url = await _normalise_source(source, token=token)
     host = parsed_url.netloc
     user, repo = _get_user_and_repo_from_path(parsed_url.path)
