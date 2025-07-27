@@ -14,6 +14,28 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
 
 ---
 
+## Git Strategy
+
+The idea is to follow basic "trunk based development" strategy.
+
+We consider that the `main` branch is the one that is production ready and always up to date.
+
+When submitting a PR for review, the history should be clean and linear, containing **only** the changes that are being reviewed. Thus, if there are changes on the target branch, the PR should be rebased on top of it. This makes it easier to both review and understand the changes, reducing overall overhead. Consider the history to be part of the PR, not just a side-effect of git.
+
+If there are conflicts, they will then have to be resolved locally.
+
+When merging a PR, we will use the `squash` option with a linear history, reducing the entire PR into a single commit. This will force PRs to focus on one feature or bug fix at a time.
+
+**tldr:**
+
+- PRs should be *rebased* on the target branch
+- target branch should *not* be merged back into the PR
+- only tackle one thing at a time
+
+**NB:** There is currently a bug in GitHub where using the `rebase` option on the website will remove the gpg signature of the commits. They don't seem to be planning on fixing it so we will need to do it locally and then force-push the PR.
+
+---
+
 ## How to submit a Pull Request
 
 > **Prerequisites**: The project uses **Python 3.9+** and `pre-commit` for development.
@@ -36,57 +58,20 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
    pre-commit install
    ```
 
-4. **Create a branch** for your changes:
-
-   ```bash
-   git checkout -b your-branch
-   ```
+4. **Create a branch** for your changes.
 
 5. **Make your changes** (and add tests when relevant).
 
-6. **Stage** the changes:
+6. Run the local server and tests to sanity-check (these will run automatically in the CI/CD pipelines, but it's good to check locally as well)
 
-   ```bash
-   git add .
-   ```
+7. **Sign** your commits and push your branch.
 
-7. **Run the backend test suite**:
+8. **Open a pull request** on GitHub with a clear description of your changes.
 
-   ```bash
-   pytest
-   ```
-
-8. *(Optional)* **Run `pre-commit` on all files** to check hooks without committing:
-
-   ```bash
-   pre-commit run --all-files
-   ```
-
-9. **Run the local server** to sanity-check:
-
-    ```bash
-    cd src
-    uvicorn server.main:app
-    ```
-
-    Open [http://localhost:8000](http://localhost:8000) to confirm everything works.
-
-10. **Commit** (signed):
-
-    ```bash
-    git commit -S -m "Your commit message"
-    ```
-
-    If *pre-commit* complains, fix the problems and repeat **5 – 9**.
-
-11. **Push** your branch:
-
-    ```bash
-    git push origin your-branch
-    ```
-
-12. **Open a pull request** on GitHub with a clear description.
-
-13. **Iterate** on any review feedback—update your branch and repeat **6 – 11** as needed.
+9. **Iterate** on any feedback you receive.
 
 *(Optional) Invite a maintainer to your branch for easier collaboration.*
+
+Do not hesitate to ask for help if you get stuck, either here or on the Discord server.
+
+Keep in mind that we are a small team and we will do our best to review your changes as soon as possible.
