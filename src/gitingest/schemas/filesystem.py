@@ -68,7 +68,18 @@ class FileSystemNode(Source):
 
 @dataclass
 class FileSystemFile(FileSystemNode):
-    pass # Nothing for now
+    @property
+    def content(self):
+        # read the file
+        try:
+            with open(self.path, "r") as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading content of {self.name}: {e}"
+
+@dataclass
+class FileSystemTextFile(FileSystemFile):
+    pass
 
 @FileSystemNode._tree.register
 def _(self: 'FileSystemFile'):
@@ -117,7 +128,6 @@ def _(self: 'FileSystemSymlink'):
     return f"{self.name} -> {self.target}" if self.target else self.name
 
 
-@dataclass
 class Context:
     """Context for holding a list of Source objects and generating a digest on demand using a Formatter.
 

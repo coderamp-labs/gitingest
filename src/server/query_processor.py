@@ -322,6 +322,7 @@ async def process_query(
         else:
             # Store locally
             local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
+            print(f"Writing to {local_txt_file}")
             with local_txt_file.open("w", encoding="utf-8") as f:
                 f.write(digest)
 
@@ -337,13 +338,13 @@ async def process_query(
             "download full ingest to see more)\n" + digest[:MAX_DISPLAY_SIZE]
         )
 
-    _print_success(
-        url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-        summary=digest,
-    )
+    # _print_success(
+    #     url=query.url,
+    #     max_file_size=max_file_size,
+    #     pattern_type=pattern_type,
+    #     pattern=pattern,
+    #     summary=digest,
+    # )
 
     digest_url = _generate_digest_url(query)
 
