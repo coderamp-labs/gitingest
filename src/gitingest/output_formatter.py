@@ -177,7 +177,6 @@ def _format_token_count(text: str) -> str | None:
 
     return str(total_tokens)
 
-# Rename JinjaFormatter to DefaultFormatter throughout the file
 class DefaultFormatter:
     def __init__(self):
         self.env = Environment(loader=BaseLoader())
@@ -217,7 +216,8 @@ class DefaultFormatter:
 
     @summary.register
     def _(self, node: FileSystemDirectory, query):
-        template = """
+        template = \
+"""
 Directory structure:
 {{ node.tree }}
 """
