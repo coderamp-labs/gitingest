@@ -17,9 +17,8 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # Now allow pushing from PRs when either 'push-container' OR 'deploy-pr-temp-env' is present:
   PUSH_FROM_PR: >-
-    ${{ github.event_name == 'pull_request' &&
+    ${{ github.event_name == 'pull_request_target' &&
        (
          contains(github.event.pull_request.labels.*.name, 'push-container') ||
          contains(github.event.pull_request.labels.*.name, 'deploy-pr-temp-env')
@@ -31,6 +30,7 @@ permissions:
 
 jobs:
   docker-build:
+    name: "GHCR"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,14 +84,14 @@ jobs:
         with:
           context: .
           platforms: linux/amd64, linux/arm64
-          push: ${{ github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true' }}
+          push: ${{ github.event_name != 'pull_request_target' || env.PUSH_FROM_PR == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Generate artifact attestation
-        if: github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true'
+        if: github.event_name != 'pull_request_target' || env.PUSH_FROM_PR == 'true'
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}

@@ -1,0 +1,82 @@
+name: Build & Push Container
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - '*'
+  merge_group:
+  pull_request_target:
+    types: [labeled, synchronize, reopened, ready_for_review, opened]
+
+env:
+  PUSH_FROM_PR: >-
+    ${{ github.event_name == 'pull_request_target' &&
+       (
+         contains(github.event.pull_request.labels.*.name, 'push-container') ||
+         contains(github.event.pull_request.labels.*.name, 'deploy-pr-temp-env')
+       )
+    }}
+
+jobs:
+  terraform:
+    name: "ECR"
+    runs-on: ubuntu-latest
+    if: github.repository == 'coderamp-labs/gitingest'
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.CODERAMP_AWS_ECR_REGISTRY_PUSH_ROLE_ARN }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: eu-west-1
+
+      - name: Set current timestamp
+        id: vars
+        run: |
+          echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ vars.ECR_REGISTRY_URL }}
+          flavor: |
+            latest=false
+          tags: |
+            type=ref,event=branch,branch=main,suffix=-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.timestamp }}
+            type=pep440,pattern={{raw}}
+            type=ref,event=pr
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64, linux/arm64
+          push: ${{ github.event_name != 'pull_request_target' || env.PUSH_FROM_PR == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
