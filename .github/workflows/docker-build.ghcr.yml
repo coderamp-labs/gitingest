@@ -7,7 +7,7 @@ on:
     tags:
       - '*'
   merge_group:
-  pull_request_target:
+  pull_request:
     types: [labeled, synchronize, reopened, ready_for_review, opened]
 
 concurrency:
@@ -18,7 +18,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   PUSH_FROM_PR: >-
-    ${{ github.event_name == 'pull_request_target' &&
+    ${{ github.event_name == 'pull_request' &&
        (
          contains(github.event.pull_request.labels.*.name, 'push-container') ||
          contains(github.event.pull_request.labels.*.name, 'deploy-pr-temp-env')
@@ -84,14 +84,14 @@ jobs:
         with:
           context: .
           platforms: linux/amd64, linux/arm64
-          push: ${{ github.event_name != 'pull_request_target' || env.PUSH_FROM_PR == 'true' }}
+          push: ${{ github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Generate artifact attestation
-        if: github.event_name != 'pull_request_target' || env.PUSH_FROM_PR == 'true'
+        if: github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true'
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
