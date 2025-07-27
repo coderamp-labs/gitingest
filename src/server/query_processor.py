@@ -305,11 +305,26 @@ async def process_query(
         context = ingest_query(query)
         digest = context.generate_digest()
 
-        summary, tree, content = context.generate_digest()
+        # Store digest based on S3 configuration
+        if is_s3_enabled():
+            # Upload to S3 instead of storing locally
+            s3_file_path = generate_s3_file_path(
+                source=query.url,
+                user_name=cast("str", query.user_name),
+                repo_name=cast("str", query.repo_name),
+                commit=query.commit,
+                include_patterns=query.include_patterns,
+                ignore_patterns=query.ignore_patterns,
+            )
+            s3_url = upload_to_s3(content=context.digest, s3_file_path=s3_file_path, ingest_id=query.id)
+            # Store S3 URL in query for later use
+            query.s3_url = s3_url
+        else:
+            # Store locally
+            local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
+            with local_txt_file.open("w", encoding="utf-8") as f:
+                f.write(digest)
 
-        # Prepare the digest content (tree + content)
-        digest_content = tree + "\n" + content
-        _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         # Clean up repository even if processing failed
