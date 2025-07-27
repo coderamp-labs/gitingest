@@ -61,8 +61,8 @@ jobs:
             latest=false
           tags: |
             type=ref,event=branch,branch=main,suffix=-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.timestamp }}
+            type=ref,event=pr,suffix=-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.timestamp }}
             type=pep440,pattern={{raw}}
-            type=ref,event=pr
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
