@@ -11,6 +11,7 @@ from uuid import UUID  # noqa: TC003 (typing-only-standard-library-import) neede
 
 import boto3
 from botocore.exceptions import ClientError
+from prometheus_client import Counter
 
 from server.models import S3Metadata
 
@@ -20,6 +21,10 @@ if TYPE_CHECKING:
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
+
+_cache_lookup_counter = Counter("gitingest_cache_lookup", "Number of cache lookups", ["url"])
+_cache_hit_counter = Counter("gitingest_cache_hit", "Number of cache hits", ["url"])
+_cache_miss_counter = Counter("gitingest_cache_miss", "Number of cache misses", ["url"])
 
 
 class S3UploadError(Exception):
@@ -424,7 +429,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
     """
     if not is_s3_enabled():
         return False
-
+    _cache_lookup_counter.labels(url=s3_file_path).inc()
     try:
         s3_client = create_s3_client()
         bucket_name = get_s3_bucket_name()
@@ -435,13 +440,16 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
         # Object doesn't exist if we get a 404 error
         error_code = err.response.get("Error", {}).get("Code")
         if error_code == "404":
+            _cache_miss_counter.labels(url=s3_file_path).inc()
             return False
         # Re-raise other errors (permissions, etc.)
         raise
     except Exception:
         # For any other exception, assume object doesn't exist
+        _cache_miss_counter.labels(url=s3_file_path).inc()
         return False
     else:
+        _cache_hit_counter.labels(url=s3_file_path).inc()
         return True
 
 
