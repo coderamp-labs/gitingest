@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/coderamp-labs/gitingest/compare/v0.2.0...v0.2.1) (2025-07-27)
+
+
+### Bug Fixes
+
+* remove logarithm conversion from the backend and correctly process max file size in kb ([#464](https://github.com/coderamp-labs/gitingest/issues/464)) ([932bfef](https://github.com/coderamp-labs/gitingest/commit/932bfef85db66704985c83f3f7c427756bd14023))
+
 ## [0.2.0](https://github.com/coderamp-labs/gitingest/compare/v0.1.5...v0.2.0) (2025-07-26)
 
 ### Features

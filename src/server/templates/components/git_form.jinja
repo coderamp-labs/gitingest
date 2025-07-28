@@ -76,12 +76,12 @@
                     </label>
                     <input type="range"
                            id="file_size"
-                           name="max_file_size"
-                           min="0"
+                           min="1"
                            max="500"
                            required
                            value="{{ default_max_file_size }}"
                            class="w-full h-3 bg-[#FAFAFA] bg-no-repeat bg-[length:50%_100%] bg-[#ebdbb7] appearance-none border-[3px] border-gray-900 rounded-sm focus:outline-none bg-gradient-to-r from-[#FE4A60] to-[#FE4A60] [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-solid [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:shadow-[3px_3px_0_#000]">
+                    <input type="hidden" id="max_file_size_kb" name="max_file_size" value="">
                 </div>
                 <!-- PAT checkbox with PAT field below -->
                 <div class="flex flex-col items-start w-full sm:col-span-2 lg:col-span-1 lg:row-span-2 lg:pt-3.5">

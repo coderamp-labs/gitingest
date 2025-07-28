@@ -13,12 +13,12 @@ from gitingest.utils.pattern_utils import process_patterns
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
 from server.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
 from server.server_config import MAX_DISPLAY_SIZE
-from server.server_utils import Colors, log_slider_to_size
+from server.server_utils import Colors
 
 
 async def process_query(
     input_text: str,
-    slider_position: int,
+    max_file_size: int,
     pattern_type: PatternType,
     pattern: str,
     token: str | None = None,
@@ -32,8 +32,8 @@ async def process_query(
     ----------
     input_text : str
         Input text provided by the user, typically a Git repository URL or slug.
-    slider_position : int
-        Position of the slider, representing the maximum file size in the query.
+    max_file_size : int
+        Max file size in KB to be include in the digest.
     pattern_type : PatternType
         Type of pattern to use (either "include" or "exclude")
     pattern : str
@@ -55,8 +55,6 @@ async def process_query(
     if token:
         validate_github_token(token)
 
-    max_file_size = log_slider_to_size(slider_position)
-
     try:
         query = await parse_remote_repo(input_text, token=token)
     except Exception as exc:
@@ -65,7 +63,7 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
-    query.max_file_size = max_file_size
+    query.max_file_size = max_file_size * 1024  # Convert to bytes since we currently use KB in higher levels
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
@@ -142,7 +140,7 @@ async def process_query(
         digest_url=digest_url,
         tree=tree,
         content=content,
-        default_max_file_size=slider_position,
+        default_max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,
     )

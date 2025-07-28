@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 from pydantic import BaseModel, Field, field_validator
 
 from gitingest.utils.compat_func import removesuffix
+from server.server_config import MAX_FILE_SIZE_KB
 
 # needed for type checking (pydantic)
-from server.form_types import IntForm, OptStrForm, StrForm  # noqa: TC001 (typing-only-first-party-import)
+if TYPE_CHECKING:
+    from server.form_types import IntForm, OptStrForm, StrForm
 
 
 class PatternType(str, Enum):
@@ -39,7 +41,7 @@ class IngestRequest(BaseModel):
     """
 
     input_text: str = Field(..., description="Git repository URL or slug to ingest")
-    max_file_size: int = Field(..., ge=0, le=500, description="File size slider position (0-500)")
+    max_file_size: int = Field(..., ge=1, le=MAX_FILE_SIZE_KB, description="File size in KB")
     pattern_type: PatternType = Field(default=PatternType.EXCLUDE, description="Pattern type for file filtering")
     pattern: str = Field(default="", description="Glob/regex pattern for file filtering")
     token: str | None = Field(default=None, description="GitHub PAT for private repositories")
