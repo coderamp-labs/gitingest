@@ -212,7 +212,6 @@ class DefaultFormatter:
 {{ SEPARATOR }}
 {{ node.name }}
 {{ SEPARATOR }}
-
 {{ node.content }}
 """
         file_template = self.env.from_string(template)
@@ -220,31 +219,25 @@ class DefaultFormatter:
 
     @format.register
     def _(self, node: FileSystemDirectory, query):
-        template = """
-{% if node.depth == 0 %}
-{{ node.name }}:
+        template = """{%- if node.depth == 0 %}{{ node.name }}:
 {{ node.tree }}
 
-{% endif %}
-{% for child in node.children %}
+{% endif -%}
+{%- for child in node.children -%}
 {{ formatter.format(child, query) }}
-{% endfor %}
-"""
+{%- endfor -%}"""
         dir_template = self.env.from_string(template)
         return dir_template.render(node=node, query=query, formatter=self)
 
     @format.register
     def _(self, node: GitRepository, query):
-        template = """
-{% if node.depth == 0 %}
-🔗 Git Repository: {{ node.name }}
+        template = """{%- if node.depth == 0 %}🔗 Git Repository: {{ node.name }}
 {{ node.tree }}
 
-{% endif %}
-{% for child in node.children %}
+{% endif -%}
+{%- for child in node.children -%}
 {{ formatter.format(child, query) }}
-{% endfor %}
-"""
+{%- endfor -%}"""
         git_template = self.env.from_string(template)
         return git_template.render(node=node, query=query, formatter=self)
 
@@ -261,18 +254,18 @@ class DefaultFormatter:
     @format.register
     def _(self, context: Context, query):
         """Format a Context by formatting all its sources."""
-        template = """
-# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
+        template = \
+"""# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
+
 Sources used:
-{% for source in context.sources %}
+{%- for source in context.sources %}
 - {{ source.name }}: {{ source.__class__.__name__ }}
 {% endfor %}
 
-{% for source in context.sources %}
+{%- for source in context.sources %}
 {{ formatter.format(source, context.query) }}
-{% endfor %}
-# End of generated content
-"""
+{%- endfor %}
+# End of generated content"""
         context_template = self.env.from_string(template)
         return context_template.render(context=context, formatter=self)
 
