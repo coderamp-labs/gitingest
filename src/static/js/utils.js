@@ -126,13 +126,13 @@ function collectFormData(form) {
     const json_data = {};
     const inputText = form.querySelector('[name="input_text"]');
     const token = form.querySelector('[name="token"]');
-    const slider = document.getElementById('file_size');
+    const hiddenInput = document.getElementById('max_file_size_kb');
     const patternType = document.getElementById('pattern_type');
     const pattern = document.getElementById('pattern');
 
     if (inputText) {json_data.input_text = inputText.value;}
     if (token) {json_data.token = token.value;}
-    if (slider) {json_data.max_file_size = slider.value;}
+    if (hiddenInput) {json_data.max_file_size = hiddenInput.value;}
     if (patternType) {json_data.pattern_type = patternType.value;}
     if (pattern) {json_data.pattern = pattern.value;}
 
@@ -172,8 +172,8 @@ function handleSuccessfulResponse(data) {
     // Show results section
     showResults();
 
-    // Store the ingest_id for download functionality
-    window.currentIngestId = data.ingest_id;
+    // Store the digest_url for download functionality
+    window.currentDigestUrl = data.digest_url;
 
     // Set plain text content for summary, tree, and content
     document.getElementById('result-summary').value = data.summary || '';
@@ -206,6 +206,14 @@ function handleSubmit(event, showLoadingSpinner = false) {
 
     if (!form) {return;}
 
+    // Ensure hidden input is updated before collecting form data
+    const slider = document.getElementById('file_size');
+    const hiddenInput = document.getElementById('max_file_size_kb');
+
+    if (slider && hiddenInput) {
+        hiddenInput.value = logSliderToSize(slider.value);
+    }
+
     if (showLoadingSpinner) {
         showLoading();
     }
@@ -226,12 +234,32 @@ function handleSubmit(event, showLoadingSpinner = false) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(json_data)
     })
-        .then((response) => response.json())
-        .then( (data) => {
-            // Hide loading overlay
+        .then(async (response) => {
+            let data;
+
+            try {
+                data = await response.json();
+            } catch {
+                data = {};
+            }
             setButtonLoadingState(submitButton, false);
 
-            // Handle error
+            if (!response.ok) {
+                // Show all error details if present
+                if (Array.isArray(data.detail)) {
+                    const details = data.detail.map((d) => `<li>${d.msg || JSON.stringify(d)}</li>`).join('');
+
+                    showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'><b>Error(s):</b><ul>${details}</ul></div>`);
+
+                    return;
+                }
+                // Other errors
+                showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'>${data.error || JSON.stringify(data) || 'An error occurred.'}</div>`);
+
+                return;
+            }
+
+            // Handle error in data
             if (data.error) {
                 showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'>${data.error}</div>`);
 
@@ -271,9 +299,9 @@ function copyFullDigest() {
 }
 
 function downloadFullDigest() {
-    // Check if we have an ingest_id
-    if (!window.currentIngestId) {
-        console.error('No ingest_id available for download');
+    // Check if we have a digest_url
+    if (!window.currentDigestUrl) {
+        console.error('No digest_url available for download');
 
         return;
     }
@@ -289,10 +317,10 @@ function downloadFullDigest() {
         Downloading...
     `;
 
-    // Create a download link to the server endpoint
+    // Create a download link using the digest_url
     const a = document.createElement('a');
 
-    a.href = `/api/download/file/${window.currentIngestId}`;
+    a.href = window.currentDigestUrl;
     a.download = 'digest.txt';
     document.body.appendChild(a);
     a.click();
@@ -327,14 +355,16 @@ function logSliderToSize(position) {
 function initializeSlider() {
     const slider = document.getElementById('file_size');
     const sizeValue = document.getElementById('size_value');
+    const hiddenInput = document.getElementById('max_file_size_kb');
 
-    if (!slider || !sizeValue) {return;}
+    if (!slider || !sizeValue || !hiddenInput) {return;}
 
     function updateSlider() {
         const value = logSliderToSize(slider.value);
 
         sizeValue.textContent = formatSize(value);
         slider.style.backgroundSize = `${(slider.value / slider.max) * 100}% 100%`;
+        hiddenInput.value = value; // Set hidden input to KB value
     }
 
     // Update on slider change

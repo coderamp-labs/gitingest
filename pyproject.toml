@@ -1,6 +1,6 @@
 [project]
 name = "gitingest"
-version = "0.1.5"
+version = "0.2.1"
 description="CLI tool to analyze and create text dumps of codebases for LLMs"
 readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
@@ -45,6 +45,7 @@ dev = [
 ]
 
 server = [
+    "boto3>=1.28.0",  # AWS SDK for S3 support
     "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
     "prometheus-client",
     "sentry-sdk[fastapi]",

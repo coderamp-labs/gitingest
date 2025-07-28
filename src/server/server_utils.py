@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import math
 import shutil
 import time
 from contextlib import asynccontextmanager, suppress
@@ -16,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from gitingest.config import TMP_BASE_PATH
-from server.server_config import DELETE_REPO_AFTER, MAX_FILE_SIZE_KB, MAX_SLIDER_POSITION
+from server.server_config import DELETE_REPO_AFTER
 
 # Initialize a rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -162,24 +161,6 @@ def _append_line(path: Path, line: str) -> None:
     """
     with path.open("a", encoding="utf-8") as fp:
         fp.write(f"{line}\n")
-
-
-def log_slider_to_size(position: int) -> int:
-    """Convert a slider position to a file size in bytes using a logarithmic scale.
-
-    Parameters
-    ----------
-    position : int
-        Slider position ranging from 0 to 500.
-
-    Returns
-    -------
-    int
-        File size in bytes corresponding to the slider position.
-
-    """
-    maxv = math.log(MAX_FILE_SIZE_KB)
-    return round(math.exp(maxv * pow(position / MAX_SLIDER_POSITION, 1.5))) * 1024
 
 
 ## Color printing utility

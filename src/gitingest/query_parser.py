@@ -46,9 +46,9 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
     host = parsed_url.netloc
     user, repo = _get_user_and_repo_from_path(parsed_url.path)
 
-    _id = str(uuid.uuid4())
+    _id = uuid.uuid4()
     slug = f"{user}-{repo}"
-    local_path = TMP_BASE_PATH / _id / slug
+    local_path = TMP_BASE_PATH / str(_id) / slug
     url = f"https://{host}/{user}/{repo}"
 
     query = IngestionQuery(
@@ -137,7 +137,7 @@ def parse_local_dir_path(path_str: str) -> IngestionQuery:
     """
     path_obj = Path(path_str).resolve()
     slug = path_obj.name if path_str == "." else path_str.strip("/")
-    return IngestionQuery(local_path=path_obj, slug=slug, id=str(uuid.uuid4()))
+    return IngestionQuery(local_path=path_obj, slug=slug, id=uuid.uuid4())
 
 
 async def _configure_branch_or_tag(
