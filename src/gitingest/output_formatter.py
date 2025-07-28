@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import ssl
+from functools import singledispatchmethod
 from typing import TYPE_CHECKING
 
 import requests.exceptions
 import tiktoken
+from jinja2 import BaseLoader, Environment
 
-from gitingest.schemas import FileSystemNode
+from gitingest.schemas import FileSystemDirectory, FileSystemFile, FileSystemNode, FileSystemSymlink, Source
+from gitingest.schemas.filesystem import SEPARATOR, Context, FileSystemNodeType, GitRepository
 from gitingest.utils.compat_func import readlink
-from functools import singledispatchmethod
-from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink
-from gitingest.schemas.filesystem import SEPARATOR, Context, FileSystemNodeType
 from gitingest.utils.logging_config import get_logger
-from jinja2 import Environment, BaseLoader
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
@@ -29,6 +28,7 @@ _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
 
 
 # Backward compatibility
+
 
 def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) -> str:
     """Create a prefix string for summarizing a repository or local directory.
@@ -208,8 +208,7 @@ class DefaultFormatter:
 
     @format.register
     def _(self, node: FileSystemFile, query):
-        template = \
-"""
+        template = """
 {{ SEPARATOR }}
 {{ node.name }}
 {{ SEPARATOR }}
@@ -221,8 +220,7 @@ class DefaultFormatter:
 
     @format.register
     def _(self, node: FileSystemDirectory, query):
-        template = \
-"""
+        template = """
 {% if node.depth == 0 %}
 {{ node.name }}:
 {{ node.tree }}
@@ -236,9 +234,23 @@ class DefaultFormatter:
         return dir_template.render(node=node, query=query, formatter=self)
 
     @format.register
-    def _(self, node: FileSystemSymlink, query):
-        template = \
+    def _(self, node: GitRepository, query):
+        template = """
+{% if node.depth == 0 %}
+🔗 Git Repository: {{ node.name }}
+{{ node.tree }}
+
+{% endif %}
+{% for child in node.children %}
+{{ formatter.format(child, query) }}
+{% endfor %}
 """
+        git_template = self.env.from_string(template)
+        return git_template.render(node=node, query=query, formatter=self)
+
+    @format.register
+    def _(self, node: FileSystemSymlink, query):
+        template = """
 {{ SEPARATOR }}
 {{ node.name }}{% if node.target %} -> {{ node.target }}{% endif %}
 {{ SEPARATOR }}
@@ -249,8 +261,7 @@ class DefaultFormatter:
     @format.register
     def _(self, context: Context, query):
         """Format a Context by formatting all its sources."""
-        template = \
-"""
+        template = """
 # Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
 Sources used:
 {% for source in context.sources %}
@@ -282,20 +293,19 @@ class DebugFormatter:
 
         # Try to get dataclass fields first
         try:
-            if hasattr(node, '__dataclass_fields__') and hasattr(node.__dataclass_fields__, 'keys'):
+            if hasattr(node, "__dataclass_fields__") and hasattr(node.__dataclass_fields__, "keys"):
                 field_names.extend(node.__dataclass_fields__.keys())
             else:
                 raise AttributeError  # Fall through to backup method
         except (AttributeError, TypeError):
             # Fall back to getting all non-private attributes
-            field_names = [attr for attr in dir(node)
-                          if not attr.startswith('_')
-                          and not callable(getattr(node, attr, None))]
+            field_names = [
+                attr for attr in dir(node) if not attr.startswith("_") and not callable(getattr(node, attr, None))
+            ]
 
         # Format the debug output
         fields_str = ", ".join(field_names)
-        template = \
-"""
+        template = """
 {{ SEPARATOR }}
 DEBUG: {{ class_name }}
 Fields: {{ fields_str }}
@@ -305,7 +315,7 @@ Fields: {{ fields_str }}
         return debug_template.render(
             SEPARATOR=SEPARATOR,
             class_name=class_name,
-            fields_str=fields_str
+            fields_str=fields_str,
         )
 
 
@@ -321,19 +331,16 @@ class SummaryFormatter:
 
     @summary.register
     def _(self, node: FileSystemDirectory, query):
-        template = \
-"""
+        template = """
 Directory structure:
 {{ node.tree }}
 """
         summary_template = self.env.from_string(template)
         return summary_template.render(node=node, query=query)
 
-
     @summary.register
     def _(self, context: Context, query):
-        template = \
-"""
+        template = """
 {{ context.summary }}
 """
         summary_template = self.env.from_string(template)

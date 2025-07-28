@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
-from gitingest.output_formatter import DefaultFormatter, DebugFormatter, SummaryFormatter
-from gitingest.schemas import FileSystemNode, FileSystemStats, Context
-from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink
+from gitingest.schemas import Context, FileSystemNode, FileSystemStats
+from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink, GitRepository
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 from gitingest.utils.logging_config import get_logger
 
@@ -17,6 +16,11 @@ if TYPE_CHECKING:
 
 # Initialize logger for this module
 logger = get_logger(__name__)
+
+
+def _is_git_repository(path: Path) -> bool:
+    """Check if a directory contains a .git folder."""
+    return (path / ".git").exists()
 
 
 def ingest_query(query: IngestionQuery) -> Context:
@@ -90,17 +94,19 @@ def ingest_query(query: IngestionQuery) -> Context:
         )
         return Context([file_node], query)
 
-    # root_node = FileSystemNode(
-    #     name=path.name,
-    #     type=FileSystemNodeType.DIRECTORY,
-    #     path_str=str(path.relative_to(query.local_path)),
-    #     path=path,
-    # )
-    root_node = FileSystemDirectory(
-        name=path.name,
-        path_str=str(path.relative_to(query.local_path)),
-        path=path,
-    )
+    # Check if this is a git repository and create appropriate node type
+    if _is_git_repository(path):
+        root_node = GitRepository(
+            name=path.name,
+            path_str=str(path.relative_to(query.local_path)),
+            path=path,
+        )
+    else:
+        root_node = FileSystemDirectory(
+            name=path.name,
+            path_str=str(path.relative_to(query.local_path)),
+            path=path,
+        )
 
     stats = FileSystemStats()
 
@@ -161,12 +167,21 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
-            child_directory_node = FileSystemDirectory(
-                name=sub_path.name,
-                path_str=str(sub_path.relative_to(query.local_path)),
-                path=sub_path,
-                depth=node.depth + 1,
-            )
+            # Check if this subdirectory is a git repository
+            if _is_git_repository(sub_path):
+                child_directory_node = GitRepository(
+                    name=sub_path.name,
+                    path_str=str(sub_path.relative_to(query.local_path)),
+                    path=sub_path,
+                    depth=node.depth + 1,
+                )
+            else:
+                child_directory_node = FileSystemDirectory(
+                    name=sub_path.name,
+                    path_str=str(sub_path.relative_to(query.local_path)),
+                    path=sub_path,
+                    depth=node.depth + 1,
+                )
 
             _process_node(node=child_directory_node, query=query, stats=stats)
 
@@ -255,7 +270,6 @@ def _process_file(path: Path, parent_node: FileSystemDirectory, stats: FileSyste
 
     stats.total_files += 1
     stats.total_size += file_size
-
 
     child = FileSystemFile(
         name=path.name,
