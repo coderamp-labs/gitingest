@@ -47,7 +47,7 @@ async def test_remote_repository_analysis(request: pytest.FixtureRequest) -> Non
     client = request.getfixturevalue("test_client")
     form_data = {
         "input_text": "https://github.com/octocat/Hello-World",
-        "max_file_size": "243",
+        "max_file_size": 243,
         "pattern_type": "exclude",
         "pattern": "",
         "token": "",
@@ -72,7 +72,7 @@ async def test_invalid_repository_url(request: pytest.FixtureRequest) -> None:
     client = request.getfixturevalue("test_client")
     form_data = {
         "input_text": "https://github.com/nonexistent/repo",
-        "max_file_size": "243",
+        "max_file_size": 243,
         "pattern_type": "exclude",
         "pattern": "",
         "token": "",
@@ -94,7 +94,7 @@ async def test_large_repository(request: pytest.FixtureRequest) -> None:
     # TODO: ingesting a large repo take too much time (eg: godotengine/godot repository)
     form_data = {
         "input_text": "https://github.com/octocat/hello-world",
-        "max_file_size": "10",
+        "max_file_size": 10,
         "pattern_type": "exclude",
         "pattern": "",
         "token": "",
@@ -119,7 +119,7 @@ async def test_concurrent_requests(request: pytest.FixtureRequest) -> None:
     def make_request() -> None:
         form_data = {
             "input_text": "https://github.com/octocat/hello-world",
-            "max_file_size": "243",
+            "max_file_size": 243,
             "pattern_type": "exclude",
             "pattern": "",
             "token": "",
@@ -146,7 +146,7 @@ async def test_large_file_handling(request: pytest.FixtureRequest) -> None:
     client = request.getfixturevalue("test_client")
     form_data = {
         "input_text": "https://github.com/octocat/Hello-World",
-        "max_file_size": "1",
+        "max_file_size": 1,
         "pattern_type": "exclude",
         "pattern": "",
         "token": "",
@@ -169,7 +169,7 @@ async def test_repository_with_patterns(request: pytest.FixtureRequest) -> None:
     client = request.getfixturevalue("test_client")
     form_data = {
         "input_text": "https://github.com/octocat/Hello-World",
-        "max_file_size": "243",
+        "max_file_size": 243,
         "pattern_type": "include",
         "pattern": "*.md",
         "token": "",

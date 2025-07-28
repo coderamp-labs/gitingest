@@ -55,7 +55,7 @@ async def test_parse_query_without_host(
     query = await parse_remote_repo(url)
 
     # Compare against the canonical dict while ignoring unpredictable fields.
-    actual = query.model_dump(exclude={"id", "local_path", "ignore_patterns"})
+    actual = query.model_dump(exclude={"id", "local_path", "ignore_patterns", "s3_url"})
 
     assert "commit" in actual
     assert _is_valid_git_commit_hash(actual["commit"])
