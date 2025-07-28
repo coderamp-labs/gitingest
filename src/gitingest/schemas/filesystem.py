@@ -70,6 +70,7 @@ class FileSystemDirectory(FileSystemNode):
     children: list[FileSystemNode] = field(default_factory=list)
     file_count: int = 0
     dir_count: int = 0
+    file_count_total: int = 0
     type: FileSystemNodeType = FileSystemNodeType.DIRECTORY
 
     def sort_children(self) -> None:

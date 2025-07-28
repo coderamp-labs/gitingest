@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
-from gitingest.output_formatter import DefaultFormatter, SummaryFormatter
+from gitingest.output_formatter import DebugFormatter, DefaultFormatter, SummaryFormatter
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
