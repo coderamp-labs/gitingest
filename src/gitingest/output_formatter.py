@@ -324,7 +324,7 @@ class SummaryFormatter:
 
     @summary.register
     def _(self, node: FileSystemDirectory, query):
-        template = """
+        template = """ \
 Directory structure:
 {{ node.tree }}
 """
@@ -334,7 +334,9 @@ Directory structure:
     @summary.register
     def _(self, context: Context, query):
         template = """
-{{ context.summary }}
+Repository: {{ context.query.user_name }}/{{ context.query.repo_name }}
+Commit: {{ context.query.commit }}
+Files analyzed: {{ context.sources[0].file_count }}
 """
         summary_template = self.env.from_string(template)
         return summary_template.render(context=context, query=query)
