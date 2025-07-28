@@ -19,8 +19,6 @@ if TYPE_CHECKING:
     from gitingest.output_formatter import Formatter
 
 SEPARATOR = "=" * 48  # Tiktoken, the tokenizer openai uses, counts 2 tokens if we have more than 48
-CONTEXT_HEADER = "# Generated using https://gitingest.com{}\n" # Replace with /user/repo if we have it otherwise leave it blank
-CONTEXT_FOOTER = "# End of gitingest context\n"
 
 class FileSystemNodeType(Enum):
     """Enum representing the type of a file system node (directory or file)."""
@@ -40,15 +38,7 @@ class FileSystemStats:
 @dataclass
 class Source(ABC):
     """Abstract base class for all sources (files, directories, etc)."""
-    @property
-    def tree(self) -> str:
-        return self._tree()
-    @property
-    def summary(self) -> str:
-        return getattr(self, "_summary", "")
-    @summary.setter
-    def summary(self, value: str) -> None:
-        self._summary = value
+    pass
 
 @dataclass
 class FileSystemNode(Source):
@@ -60,10 +50,6 @@ class FileSystemNode(Source):
 
     @property
     def tree(self):
-        return self._tree()
-
-    @singledispatchmethod
-    def _tree(self):
         return self.name
 
 @dataclass
@@ -77,13 +63,10 @@ class FileSystemFile(FileSystemNode):
         except Exception as e:
             return f"Error reading content of {self.name}: {e}"
 
-@dataclass
-class FileSystemTextFile(FileSystemFile):
-    pass
+    def render_tree(self, prefix="", is_last=True):
+        current_prefix = "└── " if is_last else "├── "
+        return [f"{prefix}{current_prefix}{self.name}"]
 
-@FileSystemNode._tree.register
-def _(self: 'FileSystemFile'):
-    return self.name
 
 @dataclass
 class FileSystemDirectory(FileSystemNode):
@@ -103,49 +86,44 @@ class FileSystemDirectory(FileSystemNode):
             return (3 if not name.startswith(".") else 4, name)
         self.children.sort(key=_sort_key)
 
-@FileSystemNode._tree.register
-def _(self: 'FileSystemDirectory'):
-    def render_tree(node, prefix="", is_last=True):
+    def render_tree(self, prefix="", is_last=True):
         lines = []
         current_prefix = "└── " if is_last else "├── "
-        display_name = node.name + "/"
+        display_name = self.name + "/"
         lines.append(f"{prefix}{current_prefix}{display_name}")
-        if hasattr(node, 'children') and node.children:
+        if hasattr(self, 'children') and self.children:
             new_prefix = prefix + ("    " if is_last else "│   ")
-            for i, child in enumerate(node.children):
-                is_last_child = i == len(node.children) - 1
-                lines.extend(child._tree()(child, prefix=new_prefix, is_last=is_last_child) if hasattr(child, '_tree') else [child.name])
+            for i, child in enumerate(self.children):
+                is_last_child = i == len(self.children) - 1
+                lines.extend(child.render_tree(prefix=new_prefix, is_last=is_last_child))
         return lines
-    return "\n".join(render_tree(self))
+
+    @property
+    def tree(self):
+        return "\n".join(self.render_tree())
 
 @dataclass
 class FileSystemSymlink(FileSystemNode):
     target: str = ""
     # Add symlink-specific fields if needed
 
-@FileSystemNode._tree.register
-def _(self: 'FileSystemSymlink'):
-    return f"{self.name} -> {self.target}" if self.target else self.name
+    def render_tree(self, prefix="", is_last=True):
+        current_prefix = "└── " if is_last else "├── "
+        display_name = f"{self.name} -> {self.target}" if self.target else self.name
+        return [f"{prefix}{current_prefix}{display_name}"]
 
 
-class Context:
-    """Context for holding a list of Source objects that can be formatted using a Formatter.
+class Context(Source):
+    """The Context object is a general container for multiple unrelated sources.
 
     Attributes
     ----------
-    nodes : list[Source]
+    sources : list[Source]
         The list of source objects to format.
-    formatter : Formatter
-        The formatter to use for formatting sources.
     query : IngestionQuery
         The query context.
     """
-    
-    def __init__(self, nodes: list[Source], formatter: Formatter, query: IngestionQuery):
-        self.nodes = nodes
-        self.formatter = formatter
-        self.query = query
 
-    @property
-    def summary(self):
-        return "\n".join(self.formatter.summary(node, self.query) for node in self.nodes)
+    def __init__(self, sources: list[Source], query: IngestionQuery):
+        self.sources = sources
+        self.query = query

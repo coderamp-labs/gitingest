@@ -11,35 +11,10 @@ import tiktoken
 from gitingest.schemas import FileSystemNode
 from gitingest.utils.compat_func import readlink
 from functools import singledispatchmethod
-from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink, FileSystemTextFile
-from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType, CONTEXT_HEADER, CONTEXT_FOOTER
+from gitingest.schemas import Source, FileSystemFile, FileSystemDirectory, FileSystemSymlink
+from gitingest.schemas.filesystem import SEPARATOR, Context, FileSystemNodeType
 from gitingest.utils.logging_config import get_logger
 from jinja2 import Environment, BaseLoader
-
-
-class OverridableDispatcher:
-    """Custom dispatcher that allows later registrations to override earlier ones, even for parent types."""
-
-    def __init__(self, default_func):
-        self.default_func = default_func
-        self.registry = []  # List of (type, func) in registration order
-
-    def register(self, type_):
-        def decorator(func):
-            # Remove any existing registration for this exact type
-            self.registry = [(t, f) for t, f in self.registry if t != type_]
-            # Add new registration at the end (highest priority)
-            self.registry.append((type_, func))
-            return func
-        return decorator
-
-    def __call__(self, instance, *args, **kwargs):
-        # Check registrations in reverse order (most recent first)
-        for type_, func in reversed(self.registry):
-            if isinstance(instance, type_):
-                return func(instance, *args, **kwargs)
-        # Fall back to default
-        return self.default_func(instance, *args, **kwargs)
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
@@ -202,28 +177,38 @@ def _format_token_count(text: str) -> str | None:
 
     return str(total_tokens)
 
+
+def generate_digest(context: Context) -> str:
+    """Generate a digest string from a Context object.
+    
+    This is a convenience function that uses the DefaultFormatter to format a Context.
+    
+    Parameters
+    ----------
+    context : Context
+        The Context object containing sources and query information.
+    
+    Returns
+    -------
+    str
+        The formatted digest string.
+    """
+    formatter = DefaultFormatter()
+    return formatter.format(context, context.query)
+
+
 class DefaultFormatter:
     def __init__(self):
         self.separator = SEPARATOR
         self.env = Environment(loader=BaseLoader())
 
-        # Set up custom dispatchers
-        def _default_format(node: Source, query):
-            return f"{getattr(node, 'content', '')}"
+    @singledispatchmethod
+    def format(self, node: Source, query):
+        return f"{getattr(node, 'content', '')}"
 
-        def _default_summary(node: Source, query):
-            return f"{getattr(node, 'name', '')}"
-
-        self.format = OverridableDispatcher(_default_format)
-        self.summary = OverridableDispatcher(_default_summary)
-
-        # Register the default implementations
-        self._register_defaults()
-
-    def _register_defaults(self):
-        @self.format.register(FileSystemFile)
-        def _(node: FileSystemFile, query):
-            template = \
+    @format.register
+    def _(self, node: FileSystemFile, query):
+        template = \
 """
 {{ SEPARATOR }}
 {{ node.name }}
@@ -231,87 +216,125 @@ class DefaultFormatter:
 
 {{ node.content }}
 """
-            file_template = self.env.from_string(template)
-            return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+        file_template = self.env.from_string(template)
+        return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
 
-        @self.format.register(FileSystemDirectory)
-        def _(node: FileSystemDirectory, query):
-            template = \
+    @format.register
+    def _(self, node: FileSystemDirectory, query):
+        template = \
 """
+{% if node.depth == 0 %}
+{{ node.name }}:
+{{ node.tree }}
+
+{% endif %}
 {% for child in node.children %}
 {{ formatter.format(child, query) }}
 {% endfor %}
 """
-            dir_template = self.env.from_string(template)
-            return dir_template.render(node=node, query=query, formatter=self)
+        dir_template = self.env.from_string(template)
+        return dir_template.render(node=node, query=query, formatter=self)
 
-        @self.summary.register(FileSystemDirectory)
-        def _(node: FileSystemDirectory, query):
-            template = \
-"""
-Directory structure:
-{{ node.tree }}
-"""
-            summary_template = self.env.from_string(template)
-            return summary_template.render(node=node, query=query, formatter=self)
-
-        @self.format.register(FileSystemSymlink)
-        def _(node: FileSystemSymlink, query):
-            template = \
+    @format.register
+    def _(self, node: FileSystemSymlink, query):
+        template = \
 """
 {{ SEPARATOR }}
 {{ node.name }}{% if node.target %} -> {{ node.target }}{% endif %}
 {{ SEPARATOR }}
 """
-            symlink_template = self.env.from_string(template)
-            return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+        symlink_template = self.env.from_string(template)
+        return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
 
-class StupidFormatter(DefaultFormatter):
+    @format.register
+    def _(self, context: Context, query):
+        """Format a Context by formatting all its sources."""
+        template = \
+"""
+# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
+Sources used:
+{% for source in context.sources %}
+- {{ source.name }}: {{ source.__class__.__name__ }}
+{% endfor %}
+
+{% for source in context.sources %}
+{{ formatter.format(source, context.query) }}
+{% endfor %}
+# End of generated content
+"""
+        context_template = self.env.from_string(template)
+        return context_template.render(context=context, formatter=self)
+
+
+class DebugFormatter:
     def __init__(self):
-        super().__init__()
+        self.separator = SEPARATOR
+        self.env = Environment(loader=BaseLoader())
 
-        @self.summary.register(FileSystemTextFile)
-        def _(node: FileSystemTextFile, query):
-            template = \
+    @singledispatchmethod
+    def format(self, node: Source, query):
+        """Format any Source type with debug information."""
+        # Get the actual class name
+        class_name = node.__class__.__name__
+
+        # Get all field names (both from dataclass fields and regular attributes)
+        field_names = []
+
+        # Try to get dataclass fields first
+        try:
+            if hasattr(node, '__dataclass_fields__') and hasattr(node.__dataclass_fields__, 'keys'):
+                field_names.extend(node.__dataclass_fields__.keys())
+            else:
+                raise AttributeError  # Fall through to backup method
+        except (AttributeError, TypeError):
+            # Fall back to getting all non-private attributes
+            field_names = [attr for attr in dir(node)
+                          if not attr.startswith('_')
+                          and not callable(getattr(node, attr, None))]
+
+        # Format the debug output
+        fields_str = ", ".join(field_names)
+        template = \
 """
 {{ SEPARATOR }}
-{{ node.name }}
+DEBUG: {{ class_name }}
+Fields: {{ fields_str }}
 {{ SEPARATOR }}
-FileSystemTextFile
 """
-
-        @self.format.register(FileSystemFile)
-        def _(node: FileSystemFile, query):
-            template = \
-"""
-{{ SEPARATOR }}
-{{ node.name }}
-{{ SEPARATOR }}
-FileSystemFile
-"""
-            file_template = self.env.from_string(template)
-            return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
+        debug_template = self.env.from_string(template)
+        return debug_template.render(
+            SEPARATOR=SEPARATOR,
+            class_name=class_name,
+            fields_str=fields_str
+        )
 
 
-def generate_digest(context) -> str:
-    """Generate a digest from a Context object.
-    
-    Parameters
-    ----------
-    context : Context
-        The context object containing nodes, formatter, and query.
-        
-    Returns
-    -------
-    str
-        The formatted digest string with header, content, and footer.
-    """
-    if context.query.user_name and context.query.repo_name:
-        context_header = CONTEXT_HEADER.format(f"/{context.query.user_name}/{context.query.repo_name}")
-    else:
-        context_header = CONTEXT_HEADER.format("")
-    context_footer = CONTEXT_FOOTER
-    formatted = []
-    for node in context.nodes:
-        formatted.append(context.formatter.format(node, context.query))
-    return context_header + "\n".join(formatted) + context_footer
+class SummaryFormatter:
+    """Dedicated formatter for generating summaries of filesystem nodes."""
+
+    def __init__(self):
+        self.env = Environment(loader=BaseLoader())
+
+    @singledispatchmethod
+    def summary(self, node: Source, query):
+        return f"{getattr(node, 'name', '')}"
+
+    @summary.register
+    def _(self, node: FileSystemDirectory, query):
+        template = \
+"""
+Directory structure:
+{{ node.tree }}
+"""
+        summary_template = self.env.from_string(template)
+        return summary_template.render(node=node, query=query)
+
+
+    @summary.register
+    def _(self, context: Context, query):
+        template = \
+"""
+{{ context.summary }}
+"""
+        summary_template = self.env.from_string(template)
+        return summary_template.render(context=context, query=query)

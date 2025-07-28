@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
-from gitingest.output_formatter import DefaultFormatter, StupidFormatter
+from gitingest.output_formatter import DefaultFormatter, DebugFormatter, SummaryFormatter
 from gitingest.schemas import FileSystemNode, FileSystemStats, Context
-from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink, FileSystemTextFile
+from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 from gitingest.utils.logging_config import get_logger
 
@@ -70,14 +70,6 @@ def ingest_query(query: IngestionQuery) -> Context:
 
         relative_path = path.relative_to(query.local_path)
 
-        # file_node = FileSystemNode(
-        #     name=path.name,
-        #     type=FileSystemNodeType.FILE,
-        #     size=path.stat().st_size,
-        #     file_count=1,
-        #     path_str=str(relative_path),
-        #     path=path,
-        # )
         file_node = FileSystemFile(
             name=path.name,
             path_str=str(relative_path),
@@ -96,7 +88,7 @@ def ingest_query(query: IngestionQuery) -> Context:
                 "file_size": file_node.size,
             },
         )
-        return Context([file_node], StupidFormatter(), query)
+        return Context([file_node], query)
 
     # root_node = FileSystemNode(
     #     name=path.name,
@@ -125,7 +117,7 @@ def ingest_query(query: IngestionQuery) -> Context:
         },
     )
 
-    return Context([root_node], StupidFormatter(), query)
+    return Context([root_node], query)
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:
@@ -264,22 +256,13 @@ def _process_file(path: Path, parent_node: FileSystemDirectory, stats: FileSyste
     stats.total_files += 1
     stats.total_size += file_size
 
-    # if file is a .txt file, create a FileSystemTextFile
-    if path.suffix == ".txt":
-        child = FileSystemTextFile(
-            name=path.name,
-            path_str=str(path.relative_to(local_path)),
-            path=path,
-            depth=parent_node.depth + 1,
-        )
-    else:
 
-        child = FileSystemFile(
-            name=path.name,
-            path_str=str(path.relative_to(local_path)),
-            path=path,
-            depth=parent_node.depth + 1,
-        )
+    child = FileSystemFile(
+        name=path.name,
+        path_str=str(path.relative_to(local_path)),
+        path=path,
+        depth=parent_node.depth + 1,
+    )
 
     parent_node.children.append(child)
     parent_node.size += file_size
@@ -290,7 +273,7 @@ def limit_exceeded(stats: FileSystemStats, depth: int) -> bool:
     """Check if any of the traversal limits have been exceeded.
 
     This function checks if the current traversal has exceeded any of the configured limits:
-    maximum directory depth, maximum number of files, or maximum total size in bytes.
+    maximum directory depth, ma ximum number of files, or maximum total size in bytes.
 
     Parameters
     ----------
