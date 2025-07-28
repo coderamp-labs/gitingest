@@ -302,22 +302,17 @@ def _handle_remove_readonly(
 
 
 async def _write_output(tree: str, content: str, target: str | None) -> None:
-    """Write combined output to ``target`` (``"-"`` ⇒ stdout).
-
-    Parameters
-    ----------
-    tree : str
-        The tree-like string representation of the file structure.
-    content : str
-        The content of the files in the repository or directory.
-    target : str | None
-        The path to the output file. If ``None``, the results are not written to a file.
-
-    """
+    """Write combined output to ``target`` (``"-"`` ⇒ stdout)."""
     data = f"{tree}\n{content}"
     loop = asyncio.get_running_loop()
-    if target == "-":
-        await loop.run_in_executor(None, sys.stdout.write, data)
-        await loop.run_in_executor(None, sys.stdout.flush)
-    elif target is not None:
-        await loop.run_in_executor(None, Path(target).write_text, data, "utf-8")
+    try:
+        if target == "-":
+            logger.debug("Writing output to stdout.")
+            await loop.run_in_executor(None, sys.stdout.write, data)
+            await loop.run_in_executor(None, sys.stdout.flush)
+        elif target is not None:
+            logger.debug("Writing output to file: %s", target)
+            await loop.run_in_executor(None, Path(target).write_text, data, "utf-8")
+    except Exception as exc:
+        logger.exception("Failed to write output to %s.", target, exc_info=exc)
+        raise

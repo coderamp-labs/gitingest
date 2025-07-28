@@ -99,10 +99,12 @@ async def ensure_git_installed() -> None:
         try:
             stdout, _ = await run_command("git", "config", "core.longpaths")
             if stdout.decode().strip().lower() != "true":
-                logger.warning("WARN: Git clone may fail on Windows due to long file paths:")
-                logger.warning("To avoid this issue, consider enabling long path support with:")
-                logger.warning("    git config --global core.longpaths true")
-                logger.warning("Note: This command may require administrator privileges.")
+                logger.warning(
+                    """Git clone may fail on Windows due to long file paths:
+To avoid this issue, consider enabling long path support with:
+    git config --global core.longpaths true
+Note: This command may require administrator privileges.""",
+                )
         except RuntimeError:
             # Ignore if checking 'core.longpaths' fails.
             pass

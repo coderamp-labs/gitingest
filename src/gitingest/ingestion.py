@@ -114,7 +114,7 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
             _process_symlink(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_file():
             if sub_path.stat().st_size > query.max_file_size:
-                logger.info("Skipping file %s: would exceed max file size limit", sub_path)
+                logger.debug("Skipping file %s: would exceed max file size limit", sub_path)
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
@@ -194,7 +194,7 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
 
     file_size = path.stat().st_size
     if stats.total_size + file_size > MAX_TOTAL_SIZE_BYTES:
-        logger.info("Skipping file %s: would exceed total size limit", path)
+        logger.debug("Skipping file %s: would exceed total size limit", path)
         return
 
     stats.total_files += 1

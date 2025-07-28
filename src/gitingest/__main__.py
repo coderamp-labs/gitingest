@@ -12,9 +12,9 @@ from typing_extensions import Unpack
 
 from gitingest.config import MAX_FILE_SIZE, OUTPUT_FILE_NAME
 from gitingest.entrypoint import ingest_async
-from gitingest.logging_config import setup_json_logging
+from gitingest.logging_config import setup_logging
 
-setup_json_logging()
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +169,9 @@ async def _async_main(
         output_target = output if output is not None else OUTPUT_FILE_NAME
 
         if output_target == "-":
-            click.echo("Analyzing source, preparing output for stdout...", err=True)
+            logger.debug("Analyzing source, preparing output for stdout...")
         else:
-            click.echo(f"Analyzing source, output will be written to '{output_target}'...", err=True)
+            logger.debug("Analyzing source, output will be written to '%s'...", output_target)
 
         summary, _, _ = await ingest_async(
             source,
@@ -186,18 +186,18 @@ async def _async_main(
         )
     except Exception as exc:
         # Convert any exception into Click.Abort so that exit status is non-zero
-        click.echo(f"Error: {exc}", err=True)
+        logger.exception("Ingest failed.", exc_info=exc)
         raise click.Abort from exc
 
     if output_target == "-":  # stdout
-        click.echo("\n--- Summary ---", err=True)
-        click.echo(summary, err=True)
-        click.echo("--- End Summary ---", err=True)
-        click.echo("Analysis complete! Output sent to stdout.", err=True)
+        logger.info("--- Summary ---")
+        logger.info(summary)
+        logger.info("--- End Summary ---")
+        logger.info("Analysis complete! Output sent to stdout.")
     else:  # file
-        click.echo(f"Analysis complete! Output written to: {output_target}")
-        click.echo("\nSummary:")
-        click.echo(summary)
+        logger.info("Analysis complete! Output written to: %s", output_target)
+        logger.info("Summary:")
+        logger.info(summary)
 
 
 if __name__ == "__main__":

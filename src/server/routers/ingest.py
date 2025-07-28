@@ -1,5 +1,7 @@
 """Ingest endpoint for the API."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 from prometheus_client import Counter
@@ -11,6 +13,7 @@ from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import limiter
 
 ingest_counter = Counter("gitingest_ingest_total", "Number of ingests", ["status", "url"])
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,6 +39,13 @@ async def api_ingest(
     - **JSONResponse**: Success response with ingestion results or error response with appropriate HTTP status code
 
     """
+    logger.debug(
+        "POST /api/ingest called with input_text=%s, max_file_size=%s, pattern_type=%s, pattern=%s",
+        ingest_request.input_text,
+        ingest_request.max_file_size,
+        ingest_request.pattern_type,
+        ingest_request.pattern,
+    )
     response = await _perform_ingestion(
         input_text=ingest_request.input_text,
         max_file_size=ingest_request.max_file_size,
@@ -43,7 +53,12 @@ async def api_ingest(
         pattern=ingest_request.pattern,
         token=ingest_request.token,
     )
-    # limit URL to 255 characters
+    logger.info(
+        "Ingest POST result: status_code=%s, url=%s",
+        response.status_code,
+        ingest_request.input_text[:255],
+    )  # Important event: ingestion result
+
     ingest_counter.labels(status=response.status_code, url=ingest_request.input_text[:255]).inc()
     return response
 
@@ -78,6 +93,16 @@ async def api_ingest_get(
     **Returns**
     - **JSONResponse**: Success response with ingestion results or error response with appropriate HTTP status code
     """
+    logger.debug(
+        "GET /api/%s/%s called with user=%s, repository=%s, max_file_size=%s, pattern_type=%s, pattern=%s",
+        user,
+        repository,
+        user,
+        repository,
+        max_file_size,
+        pattern_type,
+        pattern,
+    )
     response = await _perform_ingestion(
         input_text=f"{user}/{repository}",
         max_file_size=max_file_size,
@@ -85,7 +110,13 @@ async def api_ingest_get(
         pattern=pattern,
         token=token or None,
     )
-    # limit URL to 255 characters
+    logger.info(
+        "Ingest GET result: status_code=%s, url=%s/%s",
+        response.status_code,
+        user,
+        repository,
+    )  # Important event: ingestion result
+
     ingest_counter.labels(status=response.status_code, url=f"{user}/{repository}"[:255]).inc()
     return response
 
@@ -115,22 +146,28 @@ async def download_ingest(ingest_id: str) -> FileResponse:
     # Normalize and validate the directory path
     directory = (TMP_BASE_PATH / ingest_id).resolve()
     if not str(directory).startswith(str(TMP_BASE_PATH.resolve())):
+        logger.error("Invalid ingest ID: %s (directory traversal attempt)", ingest_id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Invalid ingest ID: {ingest_id!r}")
 
     if not directory.is_dir():
+        logger.error("Digest %s not found (directory does not exist)", ingest_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Digest {ingest_id!r} not found")
 
     try:
         first_txt_file = next(directory.glob("*.txt"))
+        logger.debug("Found .txt file for download: %s", first_txt_file)
     except StopIteration as exc:
+        logger.exception("No .txt file found for digest %s", ingest_id, exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No .txt file found for digest {ingest_id!r}",
+            detail=f"No .txt file found for digest {ingest_id}",
         ) from exc
 
     try:
+        logger.info("Returning FileResponse for %s", first_txt_file)  # Important event: file download
         return FileResponse(path=first_txt_file, media_type="text/plain", filename=first_txt_file.name)
     except PermissionError as exc:
+        logger.exception("Permission denied for %s", first_txt_file, exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied for {first_txt_file}",

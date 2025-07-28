@@ -193,7 +193,7 @@ def _format_token_count(text: str) -> str | None:
         encoding = tiktoken.get_encoding("o200k_base")  # gpt-4o, gpt-4o-mini
         total_tokens = len(encoding.encode(text, disallowed_special=()))
     except (ValueError, UnicodeEncodeError):
-        logger.exception()
+        logger.exception("Failed to estimate token size.")
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:

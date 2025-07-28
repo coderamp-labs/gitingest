@@ -49,56 +49,85 @@ async def process_query(
         A union type, corresponding to IngestErrorResponse or IngestSuccessResponse
 
     """
+    logger.debug(
+        "Processing query: input_text=%s, slider_position=%s, pattern_type=%s, pattern=%s",
+        input_text,
+        slider_position,
+        pattern_type,
+        pattern,
+    )
     if token:
+        logger.debug("Validating GitHub token.")
         validate_github_token(token)
 
     max_file_size = log_slider_to_size(slider_position)
+    logger.debug("Calculated max_file_size: %s", max_file_size)
 
     try:
+        logger.debug("Parsing remote repo.")
         query = await parse_remote_repo(input_text, token=token)
+        logger.debug("Parsed query: url=%s, user=%s, repo=%s", query.url, query.user_name, query.repo_name)
     except Exception as exc:
-        logger.exception()
+        logger.exception("Failed to parse remote repo.")
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
     query.host = cast("str", query.host)
     query.max_file_size = max_file_size
+    logger.debug("Processing patterns: pattern_type=%s, pattern=%s", pattern_type, pattern)
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
     )
 
     clone_config = query.extract_clone_config()
+    logger.debug("Cloning repo with config: %r", clone_config)
     await clone_repo(clone_config, token=token)
 
     short_repo_url = f"{query.user_name}/{query.repo_name}"  # Sets the "<user>/<repo>" for the page title
 
     try:
+        logger.debug("Running ingest_query.")
         summary, tree, content = ingest_query(query)
-
+        logger.debug("Ingest query complete. Writing tree and content to file.")
         # TODO: why are we writing the tree and content to a file here?
         local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
         with local_txt_file.open("w", encoding="utf-8") as f:
             f.write(tree + "\n" + content)
+        logger.debug("Wrote output to %s", local_txt_file)
 
     except Exception as exc:
-        logger.exception()
-        _print_error(query.url, max_file_size, pattern_type, pattern)
+        logger.exception(
+            "Error processing query for URL %s (max_file_size=%s, pattern_type=%s, pattern=%s).",
+            query.url,
+            max_file_size,
+            pattern_type,
+            pattern,
+            exc_info=exc,
+        )
         return IngestErrorResponse(error=str(exc))
 
     if len(content) > MAX_DISPLAY_SIZE:
+        logger.info(
+            "Content cropped to %sk characters for display.",
+            int(MAX_DISPLAY_SIZE / 1_000),
+        )  # Important: user-facing truncation
         content = (
             f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
             "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
         )
 
-    _print_success(
-        url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-        summary=summary,
-    )
+    logger.info(
+        "Query processed successfully for URL %s (max_file_size=%s, pattern_type=%s, pattern=%s)",
+        query.url,
+        max_file_size,
+        pattern_type,
+        pattern,
+    )  # Important: successful query
+    estimated_tokens = None
+    if "Estimated tokens:" in summary:
+        estimated_tokens = summary[summary.index("Estimated tokens:") + len("Estimated ") :]
+        logger.info("Estimated tokens: %s", estimated_tokens)  # Important: token estimation
 
     return IngestSuccessResponse(
         repo_url=input_text,
@@ -111,68 +140,3 @@ async def process_query(
         pattern_type=pattern_type,
         pattern=pattern,
     )
-
-
-def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
-    """Print a formatted summary of the query details for debugging.
-
-    Parameters
-    ----------
-    url : str
-        The URL associated with the query.
-    max_file_size : int
-        The maximum file size allowed for the query, in bytes.
-    pattern_type : str
-        Specifies the type of pattern to use, either "include" or "exclude".
-    pattern : str
-        The actual pattern string to include or exclude in the query.
-
-    """
-    default_max_file_kb = 50
-    logger.info("%s", url)
-    if int(max_file_size / 1024) != default_max_file_kb:
-        logger.info("Size: %ikB", int(max_file_size / 1024))
-    if pattern_type == "include" and pattern != "":
-        logger.info("Include %s", pattern)
-    elif pattern_type == "exclude" and pattern != "":
-        logger.info("Exclude %s", pattern)
-
-
-def _print_error(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
-    """Print a formatted error message for debugging.
-
-    Parameters
-    ----------
-    url : str
-        The URL associated with the query that caused the error.
-    max_file_size : int
-        The maximum file size allowed for the query, in bytes.
-    pattern_type : str
-        Specifies the type of pattern to use, either "include" or "exclude".
-    pattern : str
-        The actual pattern string to include or exclude in the query.
-
-    """
-    _print_query(url, max_file_size, pattern_type, pattern)
-
-
-def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str, summary: str) -> None:
-    """Print a formatted success message for debugging.
-
-    Parameters
-    ----------
-    url : str
-        The URL associated with the successful query.
-    max_file_size : int
-        The maximum file size allowed for the query, in bytes.
-    pattern_type : str
-        Specifies the type of pattern to use, either "include" or "exclude".
-    pattern : str
-        The actual pattern string to include or exclude in the query.
-    summary : str
-        A summary of the query result, including details like estimated tokens.
-
-    """
-    estimated_tokens = summary[summary.index("Estimated tokens:") + len("Estimated ") :]
-    _print_query(url, max_file_size, pattern_type, pattern)
-    logger.info("%s", estimated_tokens)

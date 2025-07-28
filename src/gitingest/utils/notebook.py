@@ -41,6 +41,7 @@ def process_notebook(file: Path, *, include_output: bool = True) -> str:
             notebook: dict[str, Any] = json.load(f)
     except json.JSONDecodeError as exc:
         msg = f"Invalid JSON in notebook: {file}"
+        logger.exception(msg)
         raise InvalidNotebookError(msg) from exc
 
     # Check if the notebook contains worksheets
@@ -125,24 +126,7 @@ def _process_cell(cell: dict[str, Any], *, include_output: bool) -> str | None:
 
 
 def _extract_output(output: dict[str, Any]) -> list[str]:
-    """Extract the output from a Jupyter notebook cell.
-
-    Parameters
-    ----------
-    output : dict[str, Any]
-        The output dictionary from a Jupyter notebook cell.
-
-    Returns
-    -------
-    list[str]
-        The output as a list of strings.
-
-    Raises
-    ------
-    ValueError
-        If an unknown output type is encountered.
-
-    """
+    """Extract the output from a Jupyter notebook cell."""
     output_type = output["output_type"]
 
     if output_type == "stream":
@@ -155,4 +139,5 @@ def _extract_output(output: dict[str, Any]) -> list[str]:
         return [f"Error: {output['ename']}: {output['evalue']}"]
 
     msg = f"Unknown output type: {output_type}"
+    logger.error(msg)
     raise ValueError(msg)

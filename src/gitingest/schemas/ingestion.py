@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path  # noqa: TC003 (typing-only-standard-library-import) needed for type checking (pydantic)
 
 from pydantic import BaseModel, Field
 
 from gitingest.config import MAX_FILE_SIZE
 from gitingest.schemas.cloning import CloneConfig
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
@@ -68,21 +71,18 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
     include_submodules: bool = Field(default=False)
 
     def extract_clone_config(self) -> CloneConfig:
-        """Extract the relevant fields for the CloneConfig object.
-
-        Returns
-        -------
-        CloneConfig
-            A CloneConfig object containing the relevant fields.
-
-        Raises
-        ------
-        ValueError
-            If the ``url`` parameter is not provided.
-
-        """
+        """Extract the relevant fields for the CloneConfig object."""
+        logger.debug(
+            "Extracting CloneConfig for url=%s, local_path=%s, branch=%s, tag=%s, commit=%s",
+            self.url,
+            self.local_path,
+            self.branch,
+            self.tag,
+            self.commit,
+        )
         if not self.url:
             msg = "The 'url' parameter is required."
+            logger.error(msg)
             raise ValueError(msg)
 
         return CloneConfig(
