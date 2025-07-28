@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from server.server_config import EXAMPLE_REPOS, templates
+from server.server_config import EXAMPLE_REPOS, JINJA_TEMPLATES
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ async def home(request: Request) -> HTMLResponse:
         and other default parameters such as file size.
 
     """
-    return templates.TemplateResponse(
+    return JINJA_TEMPLATES.TemplateResponse(
         "index.jinja",
         {
             "request": request,

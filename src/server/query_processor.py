@@ -8,11 +8,13 @@ from typing import cast
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
+from gitingest.utils.colors import Colors
 from gitingest.utils.git_utils import validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
 from server.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
 from server.server_config import MAX_DISPLAY_SIZE
+from server.server_utils import log_slider_to_size
 from server.server_utils import Colors
 
 

@@ -12,9 +12,6 @@ from pytest_mock import MockerFixture
 
 from src.server.main import app
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATE_DIR = BASE_DIR / "src" / "templates"
-
 
 @pytest.fixture(scope="module")
 def test_client() -> Generator[TestClient, None, None]:

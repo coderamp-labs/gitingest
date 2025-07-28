@@ -160,6 +160,23 @@ def _append_line(path: Path, line: str) -> None:
         fp.write(f"{line}\n")
 
 
+def log_slider_to_size(position: int) -> int:
+    """Convert a slider position to a file size in bytes using a logarithmic scale.
+
+    Parameters
+    ----------
+    position : int
+        Slider position ranging from 0 to 500.
+
+    Returns
+    -------
+    int
+        File size in bytes corresponding to the slider position.
+
+    """
+    maxv = math.log(MAX_FILE_SIZE_KB)
+    return round(math.exp(maxv * pow(position / MAX_SLIDER_POSITION, 1.5))) * 1024
+
 ## Color printing utility
 class Colors:
     """ANSI color codes."""

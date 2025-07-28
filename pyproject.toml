@@ -113,14 +113,6 @@ case-sensitive = true
 [tool.pycln]
 all = true
 
-# TODO: Remove this once we figure out how to use ruff-isort
-[tool.isort]
-profile = "black"
-line_length = 119
-remove_redundant_aliases = true
-float_to_top = true  # https://github.com/astral-sh/ruff/issues/6514
-order_by_type = true
-filter_files = true
 
 # Test configuration
 [tool.pytest.ini_options]

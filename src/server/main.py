@@ -16,7 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from server.metrics_server import start_metrics_server
 from server.routers import dynamic, index, ingest
-from server.server_config import templates
+from server.server_config import JINJA_TEMPLATES
 from server.server_utils import lifespan, limiter, rate_limit_exception_handler
 
 # Load environment variables from .env file
@@ -164,7 +164,7 @@ async def custom_swagger_ui(request: Request) -> HTMLResponse:
     - **HTMLResponse**: Custom Swagger UI documentation page
 
     """
-    return templates.TemplateResponse("swagger_ui.jinja", {"request": request})
+    return JINJA_TEMPLATES.TemplateResponse("swagger_ui.jinja", {"request": request})
 
 
 @app.get("/api", include_in_schema=True)
