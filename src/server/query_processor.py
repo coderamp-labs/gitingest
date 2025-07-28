@@ -11,7 +11,7 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
-from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
+from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
 from server.s3_utils import (
     _build_s3_url,
     check_s3_object_exists,
@@ -94,15 +94,9 @@ async def _check_s3_cache(
 
             if metadata:
                 # Use cached metadata if available
-                summary = metadata.get(
-                    "summary",
-                    "Digest served from cache (S3). Download the full digest to see content details.",
-                )
-                tree = metadata.get("tree", "Digest served from cache. Download the full digest to see the file tree.")
-                content = metadata.get(
-                    "content",
-                    "Digest served from cache. Download the full digest to see the content.",
-                )
+                summary = metadata.summary
+                tree = metadata.tree
+                content = metadata.content
             else:
                 # Fallback to placeholder messages if metadata not available
                 summary = "Digest served from cache (S3). Download the full digest to see content details."
@@ -166,11 +160,11 @@ def _store_digest_content(
         s3_url = upload_to_s3(content=digest_content, s3_file_path=s3_file_path, ingest_id=query.id)
 
         # Also upload metadata JSON for caching
-        metadata = {
-            "summary": summary,
-            "tree": tree,
-            "content": content,
-        }
+        metadata = S3Metadata(
+            summary=summary,
+            tree=tree,
+            content=content,
+        )
         try:
             upload_metadata_to_s3(metadata=metadata, s3_file_path=s3_file_path, ingest_id=query.id)
             logger.debug("Successfully uploaded metadata to S3")

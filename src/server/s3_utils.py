@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -13,8 +12,11 @@ from uuid import UUID  # noqa: TC003 (typing-only-standard-library-import) neede
 import boto3
 from botocore.exceptions import ClientError
 
+from server.models import S3Metadata
+
 if TYPE_CHECKING:
     from botocore.client import BaseClient
+
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -232,13 +234,13 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     return public_url
 
 
-def upload_metadata_to_s3(metadata: dict, s3_file_path: str, ingest_id: UUID) -> str:
+def upload_metadata_to_s3(metadata: S3Metadata, s3_file_path: str, ingest_id: UUID) -> str:
     """Upload metadata JSON to S3 alongside the digest file.
 
     Parameters
     ----------
-    metadata : dict
-        The metadata dictionary containing summary, tree, and content.
+    metadata : S3Metadata
+        The metadata struct containing summary, tree, and content.
     s3_file_path : str
         The S3 file path for the digest (metadata will use .json extension).
     ingest_id : UUID
@@ -272,7 +274,7 @@ def upload_metadata_to_s3(metadata: dict, s3_file_path: str, ingest_id: UUID) ->
         "bucket_name": bucket_name,
         "metadata_file_path": metadata_file_path,
         "ingest_id": str(ingest_id),
-        "metadata_size": len(json.dumps(metadata)),
+        "metadata_size": len(metadata.model_dump_json()),
     }
 
     # Log upload attempt
@@ -283,7 +285,7 @@ def upload_metadata_to_s3(metadata: dict, s3_file_path: str, ingest_id: UUID) ->
         s3_client.put_object(
             Bucket=bucket_name,
             Key=metadata_file_path,
-            Body=json.dumps(metadata, indent=2).encode("utf-8"),
+            Body=metadata.model_dump_json(indent=2).encode("utf-8"),
             ContentType="application/json",
             Tagging=f"ingest_id={ingest_id!s}",
         )
@@ -331,7 +333,7 @@ def upload_metadata_to_s3(metadata: dict, s3_file_path: str, ingest_id: UUID) ->
     return public_url
 
 
-def get_metadata_from_s3(s3_file_path: str) -> dict | None:
+def get_metadata_from_s3(s3_file_path: str) -> S3Metadata | None:
     """Retrieve metadata JSON from S3.
 
     Parameters
@@ -341,8 +343,8 @@ def get_metadata_from_s3(s3_file_path: str) -> dict | None:
 
     Returns
     -------
-    dict | None
-        The metadata dictionary if found, None otherwise.
+    S3Metadata | None
+        The metadata struct if found, None otherwise.
 
     """
     if not is_s3_enabled():
@@ -359,7 +361,7 @@ def get_metadata_from_s3(s3_file_path: str) -> dict | None:
         response = s3_client.get_object(Bucket=bucket_name, Key=metadata_file_path)
         metadata_content = response["Body"].read().decode("utf-8")
 
-        return json.loads(metadata_content)
+        return S3Metadata.model_validate_json(metadata_content)
     except ClientError as err:
         # Object doesn't exist if we get a 404 error
         error_code = err.response.get("Error", {}).get("Code")
