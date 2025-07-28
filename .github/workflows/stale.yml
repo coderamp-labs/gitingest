@@ -1,0 +1,32 @@
+name: "Close stale issues and PRs"
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 45
+          days-before-close: 10
+          stale-issue-label: stale
+          stale-pr-label: stale
+          stale-issue-message: |
+            Hi there! We haven’t seen activity here for 45 days, so I’m marking this issue as stale.
+            If you’d like to keep it open, please leave a comment within 10 days. Thanks!
+          stale-pr-message: |
+            Hi there! We haven’t seen activity on this pull request for 45 days, so I’m marking it as stale.
+            If you’d like to keep it open, please leave a comment within 10 days. Thanks!
+          close-issue-message: |
+            Hi there! We haven’t heard anything for 10 days, so I’m closing this issue. Feel free to reopen if you’d like to continue the discussion. Thanks!
+          close-pr-message: |
+            Hi there! We haven’t heard anything for 10 days, so I’m closing this pull request. Feel free to reopen if you’d like to continue working on it. Thanks!

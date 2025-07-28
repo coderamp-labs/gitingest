@@ -41,7 +41,7 @@ class IngestionQuery(BaseModel):  # pylint: disable=too-many-instance-attributes
     tag : str | None
         The tag of the repository.
     max_file_size : int
-        The maximum file size to ingest (default: 10 MB).
+        The maximum file size to ingest in bytes (default: 10 MB).
     ignore_patterns : set[str]
         The patterns to ignore (default: ``set()``).
     include_patterns : set[str] | None

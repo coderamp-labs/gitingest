@@ -11,7 +11,7 @@ from gitingest.config import TMP_BASE_PATH
 from server.models import IngestRequest
 from server.routers_utils import COMMON_INGEST_RESPONSES, _perform_ingestion
 from server.s3_utils import is_s3_enabled
-from server.server_config import MAX_DISPLAY_SIZE
+from server.server_config import DEFAULT_FILE_SIZE_KB
 from server.server_utils import limiter
 
 ingest_counter = Counter("gitingest_ingest_total", "Number of ingests", ["status", "url"])
@@ -58,7 +58,7 @@ async def api_ingest_get(
     request: Request,  # noqa: ARG001 (unused-function-argument) # pylint: disable=unused-argument
     user: str,
     repository: str,
-    max_file_size: int = MAX_DISPLAY_SIZE,
+    max_file_size: int = DEFAULT_FILE_SIZE_KB,
     pattern_type: str = "exclude",
     pattern: str = "",
     token: str = "",
@@ -74,7 +74,7 @@ async def api_ingest_get(
     - **repository** (`str`): GitHub repository name
 
     **Query Parameters**
-    - **max_file_size** (`int`, optional): Maximum file size to include in the digest (default: 50 KB)
+    - **max_file_size** (`int`, optional): Maximum file size in KB to include in the digest (default: 5120 KB)
     - **pattern_type** (`str`, optional): Type of pattern to use ("include" or "exclude", default: "exclude")
     - **pattern** (`str`, optional): Pattern to include or exclude in the query (default: "")
     - **token** (`str`, optional): GitHub personal access token for private repositories (default: "")
