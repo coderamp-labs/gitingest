@@ -55,7 +55,7 @@ def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> N
     is_blob = path_type == "blob"
     expected_lines = _calculate_expected_lines(ref_type, is_main_branch=is_main_branch)
     expected_non_empty_lines = expected_lines - 1
-
+    print(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
     summary, _, _ = ingest(f"https://github.com/{REPO}/{path_type}/{ref}{path}")
     lines = summary.splitlines()
     parsed_lines = dict(line.split(": ", 1) for line in lines if ": " in line)

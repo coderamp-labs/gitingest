@@ -189,15 +189,12 @@ async def _async_main(
         logger.exception("Ingest failed.", exc_info=exc)
         raise click.Abort from exc
 
-    if output_target == "-":  # stdout
-        logger.info("--- Summary ---")
-        logger.info(summary)
-        logger.info("--- End Summary ---")
-        logger.info("Analysis complete! Output sent to stdout.")
-    else:  # file
-        logger.info("Analysis complete! Output written to: %s", output_target)
-        logger.info("Summary:")
-        logger.info(summary)
+    if output_target == "-":
+        click.echo(f"--- Summary ---\n{summary}\n--- End Summary ---", err=True)
+        click.echo("Analysis complete! Output sent to stdout.", err=True)
+    else:
+        click.echo(f"Analysis complete! Output written to: {output_target}")
+        click.echo(f"Summary:\n{summary}")
 
 
 if __name__ == "__main__":

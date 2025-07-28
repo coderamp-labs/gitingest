@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from itertools import chain
 from typing import TYPE_CHECKING, Any
 
@@ -47,16 +48,20 @@ def process_notebook(file: Path, *, include_output: bool = True) -> str:
     # Check if the notebook contains worksheets
     worksheets = notebook.get("worksheets")
     if worksheets:
-        logger.warning(
+        warnings.warn(
             "Worksheets are deprecated as of IPEP-17. Consider updating the notebook. "
             "(See: https://github.com/jupyter/nbformat and "
             "https://github.com/ipython/ipython/wiki/IPEP-17:-Notebook-Format-4#remove-multiple-worksheets "
             "for more information.)",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
         if len(worksheets) > 1:
-            logger.warning(
+            warnings.warn(
                 "Multiple worksheets detected. Combining all worksheets into a single script.",
+                UserWarning,
+                stacklevel=2,
             )
 
         cells = list(chain.from_iterable(ws["cells"] for ws in worksheets))
