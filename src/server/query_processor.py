@@ -68,15 +68,13 @@ async def _check_s3_cache(
     try:
         # Use git ls-remote to get commit SHA without cloning
         clone_config = query.extract_clone_config()
-        commit_sha = await resolve_commit(clone_config, token=token)
-        query.commit = commit_sha
-
+        query.commit = await resolve_commit(clone_config, token=token)
         # Generate S3 file path using the resolved commit
         s3_file_path = generate_s3_file_path(
             source=query.url,
             user_name=cast("str", query.user_name),
             repo_name=cast("str", query.repo_name),
-            commit=commit_sha,
+            commit=query.commit,
             include_patterns=query.include_patterns,
             ignore_patterns=query.ignore_patterns,
         )
