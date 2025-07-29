@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -10,6 +9,7 @@ from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
+from gitingest.utils.logging_config import get_logger
 from gitingest.utils.pattern_utils import process_patterns
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
 from server.s3_utils import (
@@ -22,13 +22,13 @@ from server.s3_utils import (
     upload_to_s3,
 )
 from server.server_config import MAX_DISPLAY_SIZE
-from server.server_utils import Colors
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from gitingest.schemas.cloning import CloneConfig
     from gitingest.schemas.ingestion import IngestionQuery
-
-logger = logging.getLogger(__name__)
 
 
 async def _check_s3_cache(
@@ -68,7 +68,10 @@ async def _check_s3_cache(
     try:
         # Use git ls-remote to get commit SHA without cloning
         clone_config = query.extract_clone_config()
+        logger.info("Resolving commit for S3 cache check", extra={"repo_url": query.url})
         query.commit = await resolve_commit(clone_config, token=token)
+        logger.info("Commit resolved successfully", extra={"repo_url": query.url, "commit": query.commit})
+
         # Generate S3 file path using the resolved commit
         s3_file_path = generate_s3_file_path(
             source=query.url,
@@ -114,8 +117,9 @@ async def _check_s3_cache(
             )
     except Exception as exc:
         # Log the exception but don't fail the entire request
-        logger.warning("S3 cache check failed, falling back to normal cloning: %s", exc)
+        logger.warning("S3 cache check failed, falling back to normal cloning", extra={"error": str(exc)})
 
+    logger.info("Digest not found in S3 cache, proceeding with normal cloning", extra={"repo_url": query.url})
     return None
 
 
@@ -165,10 +169,10 @@ def _store_digest_content(
         )
         try:
             upload_metadata_to_s3(metadata=metadata, s3_file_path=s3_file_path, ingest_id=query.id)
-            logger.debug("Successfully uploaded metadata to S3")
+            logger.info("Successfully uploaded metadata to S3")
         except Exception as metadata_exc:
             # Log the error but don't fail the entire request
-            logger.warning("Failed to upload metadata to S3: %s", metadata_exc)
+            logger.warning("Failed to upload metadata to S3", extra={"error": str(metadata_exc)})
 
         # Store S3 URL in query for later use
         query.s3_url = s3_url
@@ -250,8 +254,7 @@ async def process_query(
     try:
         query = await parse_remote_repo(input_text, token=token)
     except Exception as exc:
-        print(f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}<-  {Colors.END}", end="")
-        print(f"{Colors.RED}{exc}{Colors.END}")
+        logger.warning("Failed to parse remote repository", extra={"input_text": input_text, "error": str(exc)})
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
@@ -336,16 +339,16 @@ def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) 
 
     """
     default_max_file_kb = 50
-    print(f"{Colors.WHITE}{url:<20}{Colors.END}", end="")
-    if int(max_file_size / 1024) != default_max_file_kb:
-        print(
-            f" | {Colors.YELLOW}Size: {int(max_file_size / 1024)}kB{Colors.END}",
-            end="",
-        )
-    if pattern_type == "include" and pattern != "":
-        print(f" | {Colors.YELLOW}Include {pattern}{Colors.END}", end="")
-    elif pattern_type == "exclude" and pattern != "":
-        print(f" | {Colors.YELLOW}Exclude {pattern}{Colors.END}", end="")
+    logger.info(
+        "Processing query",
+        extra={
+            "url": url,
+            "max_file_size_kb": int(max_file_size / 1024),
+            "pattern_type": pattern_type,
+            "pattern": pattern,
+            "custom_size": int(max_file_size / 1024) != default_max_file_kb,
+        },
+    )
 
 
 def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str, pattern: str) -> None:
@@ -365,9 +368,16 @@ def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str
         The actual pattern string to include or exclude in the query.
 
     """
-    print(f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}<-  {Colors.END}", end="")
-    _print_query(url, max_file_size, pattern_type, pattern)
-    print(f" | {Colors.RED}{exc}{Colors.END}")
+    logger.error(
+        "Query processing failed",
+        extra={
+            "url": url,
+            "max_file_size_kb": int(max_file_size / 1024),
+            "pattern_type": pattern_type,
+            "pattern": pattern,
+            "error": str(exc),
+        },
+    )
 
 
 def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str, summary: str) -> None:
@@ -388,6 +398,13 @@ def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str
 
     """
     estimated_tokens = summary[summary.index("Estimated tokens:") + len("Estimated ") :]
-    print(f"{Colors.GREEN}INFO{Colors.END}: {Colors.GREEN}<-  {Colors.END}", end="")
-    _print_query(url, max_file_size, pattern_type, pattern)
-    print(f" | {Colors.PURPLE}{estimated_tokens}{Colors.END}")
+    logger.info(
+        "Query processing completed successfully",
+        extra={
+            "url": url,
+            "max_file_size_kb": int(max_file_size / 1024),
+            "pattern_type": pattern_type,
+            "pattern": pattern,
+            "estimated_tokens": estimated_tokens,
+        },
+    )

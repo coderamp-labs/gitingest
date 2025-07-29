@@ -1,14 +1,14 @@
 """Prometheus metrics server running on a separate port."""
 
-import logging
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from prometheus_client import REGISTRY, generate_latest
 
+from gitingest.utils.logging_config import get_logger
+
 # Create a logger for this module
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create a separate FastAPI app for metrics
 metrics_app = FastAPI(
@@ -53,5 +53,16 @@ def start_metrics_server(host: str = "127.0.0.1", port: int = 9090) -> None:
     None
 
     """
-    logger.info("Starting metrics server on %s:%s", host, port)
-    uvicorn.run(metrics_app, host=host, port=port)
+    logger.info("Starting metrics server", extra={"host": host, "port": port})
+
+    # Configure uvicorn to suppress startup messages to avoid duplicates
+    # since the main server already shows similar messages
+    uvicorn.run(
+        metrics_app,
+        host=host,
+        port=port,
+        log_config=None,  # Disable uvicorn's default logging config
+        access_log=False,  # Disable access logging for metrics server
+        # Suppress uvicorn's startup messages by setting log level higher
+        log_level="warning",
+    )

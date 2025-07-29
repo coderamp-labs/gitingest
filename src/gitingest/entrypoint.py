@@ -7,7 +7,6 @@ import errno
 import shutil
 import stat
 import sys
-import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Callable
@@ -20,6 +19,7 @@ from gitingest.query_parser import parse_local_dir_path, parse_remote_repo
 from gitingest.utils.auth import resolve_token
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.ignore_patterns import load_ignore_patterns
+from gitingest.utils.logging_config import get_logger
 from gitingest.utils.pattern_utils import process_patterns
 from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
 
@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 
 async def ingest_async(
@@ -83,6 +86,8 @@ async def ingest_async(
         - The content of the files in the repository or directory.
 
     """
+    logger.info("Starting ingestion process", extra={"source": source})
+
     token = resolve_token(token)
 
     source = removesuffix(source.strip(), ".git")
@@ -90,12 +95,14 @@ async def ingest_async(
     # Determine the parsing method based on the source type
     if urlparse(source).scheme in ("https", "http") or any(h in source for h in KNOWN_GIT_HOSTS):
         # We either have a full URL or a domain-less slug
+        logger.info("Parsing remote repository", extra={"source": source})
         query = await parse_remote_repo(source, token=token)
         query.include_submodules = include_submodules
         _override_branch_and_tag(query, branch=branch, tag=tag)
 
     else:
         # Local path scenario
+        logger.info("Processing local directory", extra={"source": source})
         query = parse_local_dir_path(source)
 
     query.max_file_size = max_file_size
@@ -109,11 +116,35 @@ async def ingest_async(
 
     query.include_submodules = include_submodules
 
+    logger.debug(
+        "Configuration completed",
+        extra={
+            "max_file_size": query.max_file_size,
+            "include_submodules": query.include_submodules,
+            "include_gitignored": include_gitignored,
+            "has_include_patterns": bool(query.include_patterns),
+            "has_exclude_patterns": bool(query.ignore_patterns),
+        },
+    )
+
     async with _clone_repo_if_remote(query, token=token):
+        if query.url:
+            logger.info("Repository cloned, starting file processing")
+        else:
+            logger.info("Starting local directory processing")
+
         if not include_gitignored:
+            logger.debug("Applying gitignore patterns")
             _apply_gitignores(query)
+
+        logger.info("Processing files and generating output")
         summary, tree, content = ingest_query(query)
+
+        if output:
+            logger.debug("Writing output to file", extra={"output_path": output})
         await _write_output(tree, content=content, target=output)
+
+        logger.info("Ingestion completed successfully")
         return summary, tree, content
 
 
@@ -209,19 +240,19 @@ def _override_branch_and_tag(query: IngestionQuery, branch: str | None, tag: str
     """
     if tag and query.tag and tag != query.tag:
         msg = f"Warning: The specified tag '{tag}' overrides the tag found in the URL '{query.tag}'."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     query.tag = tag or query.tag
 
     if branch and query.branch and branch != query.branch:
         msg = f"Warning: The specified branch '{branch}' overrides the branch found in the URL '{query.branch}'."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     query.branch = branch or query.branch
 
     if tag and branch:
         msg = "Warning: Both tag and branch are specified. The tag will be used."
-        warnings.warn(msg, RuntimeWarning, stacklevel=3)
+        logger.warning(msg)
 
     # Tag wins over branch if both supplied
     if query.tag:

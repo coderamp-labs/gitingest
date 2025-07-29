@@ -65,8 +65,7 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
 9. **Run the local server** to sanity-check:
 
     ```bash
-    cd src
-    uvicorn server.main:app
+    python run_server.py
     ```
 
     Open [http://localhost:8000](http://localhost:8000) to confirm everything works.

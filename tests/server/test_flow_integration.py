@@ -1,6 +1,7 @@
 """Integration tests covering core functionalities, edge cases, and concurrency handling."""
 
 import shutil
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Generator
@@ -41,7 +42,7 @@ def cleanup_tmp_dir() -> Generator[None, None, None]:
         try:
             shutil.rmtree(temp_dir)
         except PermissionError as exc:
-            print(f"Error cleaning up {temp_dir}: {exc}")
+            sys.stderr.write(f"Error cleaning up {temp_dir}: {exc}\n")
 
 
 @pytest.mark.asyncio

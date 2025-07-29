@@ -14,7 +14,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from gitingest.config import TMP_BASE_PATH
+from gitingest.utils.logging_config import get_logger
 from server.server_config import DELETE_REPO_AFTER
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # Initialize a rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -103,8 +107,8 @@ async def _remove_old_repositories(
 
                 await _process_folder(folder)
 
-        except (OSError, PermissionError) as exc:
-            print(f"Error in _remove_old_repositories: {exc}")
+        except (OSError, PermissionError):
+            logger.exception("Error in repository cleanup", extra={"base_path": str(base_path)})
 
         await asyncio.sleep(scan_interval)
 
@@ -133,16 +137,16 @@ async def _process_folder(folder: Path) -> None:
             owner, repo = filename.split("-", 1)
             repo_url = f"{owner}/{repo}"
             await loop.run_in_executor(None, _append_line, history_file, repo_url)
-    except (OSError, PermissionError) as exc:
-        print(f"Error logging repository URL for {folder}: {exc}")
+    except (OSError, PermissionError):
+        logger.exception("Error logging repository URL", extra={"folder": str(folder)})
 
     # Delete the cloned repo
     try:
         await loop.run_in_executor(None, shutil.rmtree, folder)
-    except PermissionError as exc:
-        print(f"No permission to delete {folder}: {exc}")
-    except OSError as exc:
-        print(f"Could not delete {folder}: {exc}")
+    except PermissionError:
+        logger.exception("No permission to delete folder", extra={"folder": str(folder)})
+    except OSError:
+        logger.exception("Could not delete folder", extra={"folder": str(folder)})
 
 
 def _append_line(path: Path, line: str) -> None:

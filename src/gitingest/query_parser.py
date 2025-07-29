@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
-import warnings
 from pathlib import Path
 from typing import Literal
 
 from gitingest.config import TMP_BASE_PATH
 from gitingest.schemas import IngestionQuery
 from gitingest.utils.git_utils import fetch_remote_branches_or_tags, resolve_commit
+from gitingest.utils.logging_config import get_logger
 from gitingest.utils.query_parser_utils import (
     PathKind,
     _fallback_to_root,
@@ -17,6 +17,9 @@ from gitingest.utils.query_parser_utils import (
     _is_valid_git_commit_hash,
     _normalise_source,
 )
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 
 async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQuery:
@@ -169,7 +172,7 @@ async def _configure_branch_or_tag(
     except RuntimeError as exc:
         # If remote discovery fails, we optimistically treat the first path segment as the branch/tag.
         msg = f"Warning: Failed to fetch {_ref_type}: {exc}"
-        warnings.warn(msg, RuntimeWarning, stacklevel=2)
+        logger.warning(msg)
         return path_parts.pop(0) if path_parts else None
 
     # Iterate over the path components and try to find a matching branch/tag

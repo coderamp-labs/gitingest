@@ -100,8 +100,9 @@ jobs:
           comment-tag: 'pr-preview'
           create-if-not-exists: 'true'
           message: |
-            ⚙️ Preview environment for PR #${{ env.PR_ID }} is available at:
-            https://pr-${{ env.PR_ID }}.${{ env.APP_NAME }}.coderamp.dev/
+            🌐 [Preview environment](https://pr-${{ env.PR_ID }}.${{ env.APP_NAME }}.coderamp.dev/) for PR #${{ env.PR_ID }}
+
+            📊 [Log viewer](https://app.datadoghq.eu/logs?query=kube_namespace%3Aprs-gitingest%20version%3Apr-${{ env.PR_ID }})
 
   remove-pr-env:
     if: >-

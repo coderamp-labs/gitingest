@@ -15,10 +15,13 @@ from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBID
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from server.server_utils import Colors
+from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from gitingest.schemas import CloneConfig
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # GitHub Personal-Access tokens (classic + fine-grained).
 #   - ghp_ / gho_ / ghu_ / ghs_ / ghr_  → 36 alphanumerics
@@ -97,13 +100,12 @@ async def ensure_git_installed() -> None:
         try:
             stdout, _ = await run_command("git", "config", "core.longpaths")
             if stdout.decode().strip().lower() != "true":
-                print(
-                    f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}Git clone may fail on Windows "
-                    f"due to long file paths:{Colors.END}",
+                logger.warning(
+                    "Git clone may fail on Windows due to long file paths. "
+                    "Consider enabling long path support with: 'git config --global core.longpaths true'. "
+                    "Note: This command may require administrator privileges.",
+                    extra={"platform": "windows", "longpaths_enabled": False},
                 )
-                print(f"{Colors.RED}To avoid this issue, consider enabling long path support with:{Colors.END}")
-                print(f"{Colors.RED}    git config --global core.longpaths true{Colors.END}")
-                print(f"{Colors.RED}Note: This command may require administrator privileges.{Colors.END}")
         except RuntimeError:
             # Ignore if checking 'core.longpaths' fails.
             pass

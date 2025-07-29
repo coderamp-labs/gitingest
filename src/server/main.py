@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+# Import logging configuration first to intercept all logging
+from gitingest.utils.logging_config import get_logger
 from server.metrics_server import start_metrics_server
 from server.routers import dynamic, index, ingest
 from server.server_config import templates
@@ -21,6 +23,9 @@ from server.server_utils import lifespan, limiter, rate_limit_exception_handler
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # Initialize Sentry SDK if enabled
 if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:

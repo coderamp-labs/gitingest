@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -13,6 +12,7 @@ import boto3
 from botocore.exceptions import ClientError
 from prometheus_client import Counter
 
+from gitingest.utils.logging_config import get_logger
 from server.models import S3Metadata
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 # Initialize logger for this module
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _cache_lookup_counter = Counter("gitingest_cache_lookup", "Number of cache lookups", ["url"])
 _cache_hit_counter = Counter("gitingest_cache_hit", "Number of cache hits", ["url"])
@@ -133,7 +133,7 @@ def create_s3_client() -> BaseClient:
     log_config = config.copy()
     has_credentials = bool(log_config.pop("aws_access_key_id", None) or log_config.pop("aws_secret_access_key", None))
     logger.debug(
-        msg="Creating S3 client",
+        "Creating S3 client",
         extra={
             "s3_config": log_config,
             "has_credentials": has_credentials,
@@ -186,7 +186,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     }
 
     # Log upload attempt
-    logger.debug("Starting S3 upload", extra=extra_fields)
+    logger.info("Starting S3 upload", extra=extra_fields)
 
     try:
         # Upload the content with ingest_id as tag
@@ -226,7 +226,7 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
             public_url = f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{s3_file_path}"
 
     # Log successful upload
-    logger.debug(
+    logger.info(
         "S3 upload completed successfully",
         extra={
             "bucket_name": bucket_name,
@@ -283,7 +283,7 @@ def upload_metadata_to_s3(metadata: S3Metadata, s3_file_path: str, ingest_id: UU
     }
 
     # Log upload attempt
-    logger.debug("Starting S3 metadata upload", extra=extra_fields)
+    logger.info("Starting S3 metadata upload", extra=extra_fields)
 
     try:
         # Upload the metadata with ingest_id as tag
@@ -325,7 +325,7 @@ def upload_metadata_to_s3(metadata: S3Metadata, s3_file_path: str, ingest_id: UU
             )
 
     # Log successful upload
-    logger.debug(
+    logger.info(
         "S3 metadata upload completed successfully",
         extra={
             "bucket_name": bucket_name,
@@ -371,14 +371,14 @@ def get_metadata_from_s3(s3_file_path: str) -> S3Metadata | None:
         # Object doesn't exist if we get a 404 error
         error_code = err.response.get("Error", {}).get("Code")
         if error_code == "404":
-            logger.debug("Metadata file not found: %s", metadata_file_path)
+            logger.info("Metadata file not found", extra={"metadata_file_path": metadata_file_path})
             return None
         # Log other errors but don't fail
-        logger.warning("Failed to retrieve metadata from S3: %s", err)
+        logger.warning("Failed to retrieve metadata from S3", extra={"error": str(err)})
         return None
     except Exception as exc:
         # For any other exception, log and return None
-        logger.warning("Unexpected error retrieving metadata from S3: %s", exc)
+        logger.warning("Unexpected error retrieving metadata from S3", extra={"error": str(exc)})
         return None
 
 
@@ -428,7 +428,10 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
 
     """
     if not is_s3_enabled():
+        logger.info("S3 not enabled, skipping object existence check", extra={"s3_file_path": s3_file_path})
         return False
+
+    logger.info("Checking S3 object existence", extra={"s3_file_path": s3_file_path})
     _cache_lookup_counter.labels(url=s3_file_path).inc()
     try:
         s3_client = create_s3_client()
@@ -440,15 +443,38 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
         # Object doesn't exist if we get a 404 error
         error_code = err.response.get("Error", {}).get("Code")
         if error_code == "404":
+            logger.info(
+                "S3 object not found",
+                extra={
+                    "s3_file_path": s3_file_path,
+                    "bucket_name": get_s3_bucket_name(),
+                    "error_code": error_code,
+                },
+            )
             _cache_miss_counter.labels(url=s3_file_path).inc()
             return False
         # Re-raise other errors (permissions, etc.)
         raise
-    except Exception:
+    except Exception as exc:
         # For any other exception, assume object doesn't exist
+        logger.info(
+            "S3 object check failed with exception, assuming not found",
+            extra={
+                "s3_file_path": s3_file_path,
+                "bucket_name": get_s3_bucket_name(),
+                "exception": str(exc),
+            },
+        )
         _cache_miss_counter.labels(url=s3_file_path).inc()
         return False
     else:
+        logger.info(
+            "S3 object found",
+            extra={
+                "s3_file_path": s3_file_path,
+                "bucket_name": get_s3_bucket_name(),
+            },
+        )
         _cache_hit_counter.labels(url=s3_file_path).inc()
         return True
 
@@ -471,10 +497,10 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
 
     """
     if not is_s3_enabled():
-        logger.debug("S3 not enabled, skipping URL lookup for ingest_id: %s", ingest_id)
+        logger.debug("S3 not enabled, skipping URL lookup", extra={"ingest_id": str(ingest_id)})
         return None
 
-    logger.debug(msg="Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
+    logger.info("Starting S3 URL lookup for ingest ID", extra={"ingest_id": str(ingest_id)})
 
     try:
         s3_client = create_s3_client()
@@ -499,8 +525,8 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     target_ingest_id=ingest_id,
                 ):
                     s3_url = _build_s3_url(key)
-                    logger.debug(
-                        msg="Found S3 object for ingest ID",
+                    logger.info(
+                        "Found S3 object for ingest ID",
                         extra={
                             "ingest_id": str(ingest_id),
                             "s3_key": key,
@@ -510,8 +536,8 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
                     )
                     return s3_url
 
-        logger.debug(
-            msg="No S3 object found for ingest ID",
+        logger.info(
+            "No S3 object found for ingest ID",
             extra={
                 "ingest_id": str(ingest_id),
                 "objects_checked": objects_checked,
@@ -520,7 +546,7 @@ def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
 
     except ClientError as err:
         logger.exception(
-            msg="Error during S3 URL lookup",
+            "Error during S3 URL lookup",
             extra={
                 "ingest_id": str(ingest_id),
                 "error_code": err.response.get("Error", {}).get("Code"),

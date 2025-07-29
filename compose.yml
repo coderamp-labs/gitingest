@@ -1,27 +1,45 @@
-# Common base configuration for all services
+x-base-environment: &base-environment
+  # Python Configuration
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  # Host Configuration
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:-gitingest.com,*.gitingest.com,localhost,127.0.0.1}
+  # Metrics Configuration
+  GITINGEST_METRICS_ENABLED: ${GITINGEST_METRICS_ENABLED:-true}
+  GITINGEST_METRICS_HOST: ${GITINGEST_METRICS_HOST:-0.0.0.0}
+  GITINGEST_METRICS_PORT: ${GITINGEST_METRICS_PORT:-9090}
+  # Sentry Configuration
+  GITINGEST_SENTRY_ENABLED: ${GITINGEST_SENTRY_ENABLED:-false}
+  GITINGEST_SENTRY_DSN: ${GITINGEST_SENTRY_DSN:-}
+  GITINGEST_SENTRY_TRACES_SAMPLE_RATE: ${GITINGEST_SENTRY_TRACES_SAMPLE_RATE:-1.0}
+  GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE: ${GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE:-1.0}
+  GITINGEST_SENTRY_PROFILE_LIFECYCLE: ${GITINGEST_SENTRY_PROFILE_LIFECYCLE:-trace}
+  GITINGEST_SENTRY_SEND_DEFAULT_PII: ${GITINGEST_SENTRY_SEND_DEFAULT_PII:-true}
+
+x-prod-environment: &prod-environment
+  GITINGEST_SENTRY_ENVIRONMENT: ${GITINGEST_SENTRY_ENVIRONMENT:-production}
+
+x-dev-environment: &dev-environment
+  DEBUG: "true"
+  LOG_LEVEL: "debug"
+  RELOAD: "true"
+  GITINGEST_SENTRY_ENVIRONMENT: ${GITINGEST_SENTRY_ENVIRONMENT:-development}
+  # S3 Configuration for development
+  S3_ENABLED: "true"
+  S3_ENDPOINT: http://minio:9000
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-gitingest}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-gitingest123}
+  S3_BUCKET_NAME: ${S3_BUCKET_NAME:-gitingest-bucket}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_DIRECTORY_PREFIX: ${S3_DIRECTORY_PREFIX:-dev}
+  S3_ALIAS_HOST: ${S3_ALIAS_HOST:-http://127.0.0.1:9000/${S3_BUCKET_NAME:-gitingest-bucket}}
+
 x-app-base: &app-base
   ports:
     - "${APP_WEB_BIND:-8000}:8000"  # Main application port
     - "${GITINGEST_METRICS_HOST:-127.0.0.1}:${GITINGEST_METRICS_PORT:-9090}:9090"  # Metrics port
-  environment:
-    # Python Configuration
-    - PYTHONUNBUFFERED=1
-    - PYTHONDONTWRITEBYTECODE=1
-    # Host Configuration
-    - ALLOWED_HOSTS=${ALLOWED_HOSTS:-gitingest.com,*.gitingest.com,localhost,127.0.0.1}
-    # Metrics Configuration
-    - GITINGEST_METRICS_ENABLED=${GITINGEST_METRICS_ENABLED:-true}
-    - GITINGEST_METRICS_HOST=${GITINGEST_METRICS_HOST:-127.0.0.1}
-    - GITINGEST_METRICS_PORT=${GITINGEST_METRICS_PORT:-9090}
-    # Sentry Configuration
-    - GITINGEST_SENTRY_ENABLED=${GITINGEST_SENTRY_ENABLED:-false}
-    - GITINGEST_SENTRY_DSN=${GITINGEST_SENTRY_DSN:-}
-    - GITINGEST_SENTRY_TRACES_SAMPLE_RATE=${GITINGEST_SENTRY_TRACES_SAMPLE_RATE:-1.0}
-    - GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE=${GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE:-1.0}
-    - GITINGEST_SENTRY_PROFILE_LIFECYCLE=${GITINGEST_SENTRY_PROFILE_LIFECYCLE:-trace}
-    - GITINGEST_SENTRY_SEND_DEFAULT_PII=${GITINGEST_SENTRY_SEND_DEFAULT_PII:-true}
   user: "1000:1000"
-  command: ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+  command: ["python", "run_server.py"]
 
 services:
   # Production service configuration
@@ -31,7 +49,7 @@ services:
     profiles:
       - prod
     environment:
-      - GITINGEST_SENTRY_ENVIRONMENT=${GITINGEST_SENTRY_ENVIRONMENT:-production}
+      <<: [*base-environment, *prod-environment]
     restart: unless-stopped
 
   # Development service configuration
@@ -43,24 +61,13 @@ services:
     profiles:
       - dev
     environment:
-      - DEBUG=true
-      - GITINGEST_SENTRY_ENVIRONMENT=${GITINGEST_SENTRY_ENVIRONMENT:-development}
-      # S3 Configuration
-      - S3_ENABLED=true
-      - S3_ENDPOINT=http://minio:9000
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-gitingest}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-gitingest123}
-      # Use lowercase bucket name to ensure compatibility with MinIO
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-gitingest-bucket}
-      - S3_REGION=${S3_REGION:-us-east-1}
-      - S3_DIRECTORY_PREFIX=${S3_DIRECTORY_PREFIX:-dev}
-      # Public URL for S3 resources
-      - S3_ALIAS_HOST=${S3_ALIAS_HOST:-http://127.0.0.1:9000/${S3_BUCKET_NAME:-gitingest-bucket}}
+      <<: [*base-environment, *dev-environment]
     volumes:
       # Mount source code for live development
       - ./src:/app:ro
+      - ./run_server.py:/app/run_server.py:ro
     # Use --reload flag for hot reloading during development
-    command: ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["python", "run_server.py"]
     depends_on:
       minio-setup:
         condition: service_completed_successfully
@@ -73,9 +80,9 @@ services:
     ports:
       - "9000:9000"  # API port
       - "9001:9001"  # Console port
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    environment: &minio-environment
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
@@ -96,11 +103,10 @@ services:
       minio:
         condition: service_healthy
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-gitingest}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-gitingest123}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-gitingest-bucket}
+      <<: *minio-environment
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-gitingest}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-gitingest123}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-gitingest-bucket}
     volumes:
       - ./.docker/minio/setup.sh:/setup.sh:ro
     entrypoint: sh
