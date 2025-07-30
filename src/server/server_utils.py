@@ -1,21 +1,12 @@
 """Utility functions for the server."""
 
-import asyncio
-import shutil
-import time
-from contextlib import asynccontextmanager, suppress
-from pathlib import Path
-from typing import AsyncGenerator
-
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.responses import Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from gitingest.config import TMP_BASE_PATH
 from gitingest.utils.logging_config import get_logger
-from server.server_config import DELETE_REPO_AFTER
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -50,118 +41,6 @@ async def rate_limit_exception_handler(request: Request, exc: Exception) -> Resp
         return _rate_limit_exceeded_handler(request, exc)
     # Re-raise other exceptions
     raise exc
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Manage startup & graceful-shutdown tasks for the FastAPI app.
-
-    Returns
-    -------
-    AsyncGenerator[None, None]
-        Yields control back to the FastAPI application while the background task runs.
-
-    """
-    task = asyncio.create_task(_remove_old_repositories())
-
-    yield  # app runs while the background task is alive
-
-    task.cancel()  # ask the worker to stop
-    with suppress(asyncio.CancelledError):
-        await task  # swallow the cancellation signal
-
-
-async def _remove_old_repositories(
-    base_path: Path = TMP_BASE_PATH,
-    scan_interval: int = 60,
-    delete_after: int = DELETE_REPO_AFTER,
-) -> None:
-    """Periodically delete old repositories/directories.
-
-    Every ``scan_interval`` seconds the coroutine scans ``base_path`` and deletes directories older than
-    ``delete_after`` seconds. The repository URL is extracted from the first ``.txt`` file in each directory
-    and appended to ``history.txt``, assuming the filename format: "owner-repository.txt". Filesystem errors are
-    logged and the loop continues.
-
-    Parameters
-    ----------
-    base_path : Path
-        The path to the base directory where repositories are stored (default: ``TMP_BASE_PATH``).
-    scan_interval : int
-        The number of seconds between scans (default: 60).
-    delete_after : int
-        The number of seconds after which a repository is considered old and will be deleted
-        (default: ``DELETE_REPO_AFTER``).
-
-    """
-    while True:
-        if not base_path.exists():
-            await asyncio.sleep(scan_interval)
-            continue
-
-        now = time.time()
-        try:
-            for folder in base_path.iterdir():
-                if now - folder.stat().st_ctime <= delete_after:  # Not old enough
-                    continue
-
-                await _process_folder(folder)
-
-        except (OSError, PermissionError):
-            logger.exception("Error in repository cleanup", extra={"base_path": str(base_path)})
-
-        await asyncio.sleep(scan_interval)
-
-
-async def _process_folder(folder: Path) -> None:
-    """Append the repo URL (if discoverable) to ``history.txt`` and delete ``folder``.
-
-    Parameters
-    ----------
-    folder : Path
-        The path to the folder to be processed.
-
-    """
-    history_file = Path("history.txt")
-    loop = asyncio.get_running_loop()
-
-    try:
-        first_txt_file = next(folder.glob("*.txt"))
-    except StopIteration:  # No .txt file found
-        return
-
-    # Append owner/repo to history.txt
-    try:
-        filename = first_txt_file.stem  # "owner-repo"
-        if "-" in filename:
-            owner, repo = filename.split("-", 1)
-            repo_url = f"{owner}/{repo}"
-            await loop.run_in_executor(None, _append_line, history_file, repo_url)
-    except (OSError, PermissionError):
-        logger.exception("Error logging repository URL", extra={"folder": str(folder)})
-
-    # Delete the cloned repo
-    try:
-        await loop.run_in_executor(None, shutil.rmtree, folder)
-    except PermissionError:
-        logger.exception("No permission to delete folder", extra={"folder": str(folder)})
-    except OSError:
-        logger.exception("Could not delete folder", extra={"folder": str(folder)})
-
-
-def _append_line(path: Path, line: str) -> None:
-    """Append a line to a file.
-
-    Parameters
-    ----------
-    path : Path
-        The path to the file to append the line to.
-    line : str
-        The line to append to the file.
-
-    """
-    with path.open("a", encoding="utf-8") as fp:
-        fp.write(f"{line}\n")
 
 
 ## Color printing utility

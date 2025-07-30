@@ -19,7 +19,7 @@ from gitingest.utils.logging_config import get_logger
 from server.metrics_server import start_metrics_server
 from server.routers import dynamic, index, ingest
 from server.server_config import templates
-from server.server_utils import lifespan, limiter, rate_limit_exception_handler
+from server.server_utils import limiter, rate_limit_exception_handler
 
 # Load environment variables from .env file
 load_dotenv()
@@ -55,8 +55,8 @@ if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
             environment=sentry_environment,
         )
 
-# Initialize the FastAPI application with lifespan
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+# Initialize the FastAPI application
+app = FastAPI(docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 
 # Register the custom exception handler for rate limits

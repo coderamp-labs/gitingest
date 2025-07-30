@@ -7,7 +7,6 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 MAX_DISPLAY_SIZE: int = 300_000
-DELETE_REPO_AFTER: int = 60 * 60  # In seconds (1 hour)
 
 # Slider configuration (if updated, update the logSliderToSize function in src/static/js/utils.js)
 DEFAULT_FILE_SIZE_KB: int = 5 * 1024  # 5 mb

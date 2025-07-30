@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -29,6 +30,17 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from gitingest.schemas.cloning import CloneConfig
     from gitingest.schemas.ingestion import IngestionQuery
+
+
+def _cleanup_repository(clone_config: CloneConfig) -> None:
+    """Clean up the cloned repository after processing."""
+    try:
+        local_path = Path(clone_config.local_path)
+        if local_path.exists():
+            shutil.rmtree(local_path)
+            logger.info("Successfully cleaned up repository", extra={"local_path": str(local_path)})
+    except (PermissionError, OSError):
+        logger.exception("Could not delete repository", extra={"local_path": str(clone_config.local_path)})
 
 
 async def _check_s3_cache(
@@ -292,6 +304,8 @@ async def process_query(
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+        # Clean up repository even if processing failed
+        _cleanup_repository(clone_config)
         return IngestErrorResponse(error=str(exc))
 
     if len(content) > MAX_DISPLAY_SIZE:
@@ -309,6 +323,9 @@ async def process_query(
     )
 
     digest_url = _generate_digest_url(query)
+
+    # Clean up the repository after successful processing
+    _cleanup_repository(clone_config)
 
     return IngestSuccessResponse(
         repo_url=input_text,
