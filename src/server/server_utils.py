@@ -64,11 +64,12 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """
     task = asyncio.create_task(_remove_old_repositories())
 
-    yield  # app runs while the background task is alive
-
-    task.cancel()  # ask the worker to stop
-    with suppress(asyncio.CancelledError):
-        await task  # swallow the cancellation signal
+    try:
+        yield  # app runs while the background task is alive
+    finally:
+        task.cancel()  # ask the worker to stop
+        with suppress(asyncio.CancelledError):
+            await task  # swallow the cancellation signal
 
 
 async def _remove_old_repositories(
