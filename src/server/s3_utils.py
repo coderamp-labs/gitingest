@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 # Initialize logger for this module
 logger = get_logger(__name__)
 
-_cache_lookup_counter = Counter("gitingest_cache_lookup", "Number of cache lookups", ["url"])
-_cache_hit_counter = Counter("gitingest_cache_hit", "Number of cache hits", ["url"])
-_cache_miss_counter = Counter("gitingest_cache_miss", "Number of cache misses", ["url"])
+_s3_ingest_lookup_counter = Counter("gitingest_s3_ingest_lookup", "Number of S3 ingest file lookups")
+_s3_ingest_hit_counter = Counter("gitingest_s3_ingest_hit", "Number of S3 ingest file cache hits")
+_s3_ingest_miss_counter = Counter("gitingest_s3_ingest_miss", "Number of S3 ingest file cache misses")
 
 
 class S3UploadError(Exception):
@@ -432,7 +432,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
         return False
 
     logger.info("Checking S3 object existence", extra={"s3_file_path": s3_file_path})
-    _cache_lookup_counter.labels(url=s3_file_path).inc()
+    _s3_ingest_lookup_counter.inc()
     try:
         s3_client = create_s3_client()
         bucket_name = get_s3_bucket_name()
@@ -451,7 +451,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
                     "error_code": error_code,
                 },
             )
-            _cache_miss_counter.labels(url=s3_file_path).inc()
+            _s3_ingest_miss_counter.inc()
             return False
         # Re-raise other errors (permissions, etc.)
         raise
@@ -465,7 +465,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
                 "exception": str(exc),
             },
         )
-        _cache_miss_counter.labels(url=s3_file_path).inc()
+        _s3_ingest_miss_counter.inc()
         return False
     else:
         logger.info(
@@ -475,7 +475,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
                 "bucket_name": get_s3_bucket_name(),
             },
         )
-        _cache_hit_counter.labels(url=s3_file_path).inc()
+        _s3_ingest_hit_counter.inc()
         return True
 
 
