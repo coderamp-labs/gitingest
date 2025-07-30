@@ -39,7 +39,7 @@ x-app-base: &app-base
     - "${APP_WEB_BIND:-8000}:8000"  # Main application port
     - "${GITINGEST_METRICS_HOST:-127.0.0.1}:${GITINGEST_METRICS_PORT:-9090}:9090"  # Metrics port
   user: "1000:1000"
-  command: ["python", "run_server.py"]
+  command: ["python", "-m", "server"]
 
 services:
   # Production service configuration
@@ -65,9 +65,8 @@ services:
     volumes:
       # Mount source code for live development
       - ./src:/app:ro
-      - ./run_server.py:/app/run_server.py:ro
     # Use --reload flag for hot reloading during development
-    command: ["python", "run_server.py"]
+    command: ["python", "-m", "server"]
     depends_on:
       minio-setup:
         condition: service_completed_successfully
