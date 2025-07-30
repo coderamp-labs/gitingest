@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/coderamp-labs/gitingest/compare/v0.2.1...v0.3.0) (2025-07-30)
+
+
+### Features
+
+* **logging:** implement loguru ([#473](https://github.com/coderamp-labs/gitingest/issues/473)) ([d061b48](https://github.com/coderamp-labs/gitingest/commit/d061b4877a253ba3f0480d329f025427c7f70177))
+* serve cached digest if available ([#462](https://github.com/coderamp-labs/gitingest/issues/462)) ([efe5a26](https://github.com/coderamp-labs/gitingest/commit/efe5a2686142b5ee4984061ebcec23c3bf3495d5))
+
+
+### Bug Fixes
+
+* handle network errors gracefully in token count estimation ([#437](https://github.com/coderamp-labs/gitingest/issues/437)) ([5fbb445](https://github.com/coderamp-labs/gitingest/commit/5fbb445cd8725e56972f43ec8b5e12cb299e9e83))
+* improved server side cleanup after ingest ([#477](https://github.com/coderamp-labs/gitingest/issues/477)) ([2df0eb4](https://github.com/coderamp-labs/gitingest/commit/2df0eb43989731ae40a9dd82d310ff76a794a46d))
+
+
+### Documentation
+
+* **contributing:** update PR title guidelines to enforce convention ([#476](https://github.com/coderamp-labs/gitingest/issues/476)) ([d1f8a80](https://github.com/coderamp-labs/gitingest/commit/d1f8a80826ca38ec105a1878742fe351d4939d6e))
+
 ## [0.2.1](https://github.com/coderamp-labs/gitingest/compare/v0.2.0...v0.2.1) (2025-07-27)
 
 
