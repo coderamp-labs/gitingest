@@ -51,6 +51,57 @@ def json_sink(message: Any) -> None:  # noqa: ANN401
     sys.stdout.write(json.dumps(log_entry, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
+def format_extra_fields(record: dict) -> str:
+    """Format extra fields as JSON string.
+
+    Parameters
+    ----------
+    record : dict
+        The loguru record dictionary
+
+    Returns
+    -------
+    str
+        JSON formatted extra fields or empty string
+
+    """
+    if not record.get("extra"):
+        return ""
+
+    # Filter out loguru's internal extra fields
+    filtered_extra = {k: v for k, v in record["extra"].items() if not k.startswith("_") and k not in ["name"]}
+
+    # Handle nested extra structure - if there's an 'extra' key, use its contents
+    if "extra" in filtered_extra and isinstance(filtered_extra["extra"], dict):
+        filtered_extra = filtered_extra["extra"]
+
+    if filtered_extra:
+        extra_json = json.dumps(filtered_extra, ensure_ascii=False, separators=(",", ":"))
+        return f" | {extra_json}"
+
+    return ""
+
+
+def extra_filter(record: dict) -> dict:
+    """Filter function to add extra fields to the message.
+
+    Parameters
+    ----------
+    record : dict
+        The loguru record dictionary
+
+    Returns
+    -------
+    dict
+        Modified record with extra fields appended to message
+
+    """
+    extra_str = format_extra_fields(record)
+    if extra_str:
+        record["message"] = record["message"] + extra_str
+    return record
+
+
 class InterceptHandler(logging.Handler):
     """Intercept standard library logging and redirect to loguru."""
 
@@ -101,12 +152,16 @@ def configure_logging() -> None:
         )
     else:
         # Human-readable format for development
-        logger.add(
-            sys.stdout,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        logger_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
             "<level>{level: <8}</level> | "
             "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>",
+            "{message}"
+        )
+        logger.add(
+            sys.stderr,
+            format=logger_format,
+            filter=extra_filter,
             level=log_level,
             enqueue=True,
             diagnose=True,  # Include variable values in development
