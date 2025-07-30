@@ -2,18 +2,210 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
-from gitingest.utils.git_utils import validate_github_token
+from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.pattern_utils import process_patterns
-from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType
-from server.s3_utils import generate_s3_file_path, is_s3_enabled, upload_to_s3
+from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
+from server.s3_utils import (
+    _build_s3_url,
+    check_s3_object_exists,
+    generate_s3_file_path,
+    get_metadata_from_s3,
+    is_s3_enabled,
+    upload_metadata_to_s3,
+    upload_to_s3,
+)
 from server.server_config import MAX_DISPLAY_SIZE
 from server.server_utils import Colors
+
+if TYPE_CHECKING:
+    from gitingest.schemas.cloning import CloneConfig
+    from gitingest.schemas.ingestion import IngestionQuery
+
+logger = logging.getLogger(__name__)
+
+
+async def _check_s3_cache(
+    query: IngestionQuery,
+    input_text: str,
+    max_file_size: int,
+    pattern_type: str,
+    pattern: str,
+    token: str | None,
+) -> IngestSuccessResponse | None:
+    """Check if digest already exists on S3 and return response if found.
+
+    Parameters
+    ----------
+    query : IngestionQuery
+        The parsed query object.
+    input_text : str
+        Original input text.
+    max_file_size : int
+        Maximum file size in KB.
+    pattern_type : str
+        Pattern type (include/exclude).
+    pattern : str
+        Pattern string.
+    token : str | None
+        GitHub token.
+
+    Returns
+    -------
+    IngestSuccessResponse | None
+        Response if file exists on S3, None otherwise.
+
+    """
+    if not is_s3_enabled():
+        return None
+
+    try:
+        # Use git ls-remote to get commit SHA without cloning
+        clone_config = query.extract_clone_config()
+        query.commit = await resolve_commit(clone_config, token=token)
+        # Generate S3 file path using the resolved commit
+        s3_file_path = generate_s3_file_path(
+            source=query.url,
+            user_name=cast("str", query.user_name),
+            repo_name=cast("str", query.repo_name),
+            commit=query.commit,
+            include_patterns=query.include_patterns,
+            ignore_patterns=query.ignore_patterns,
+        )
+
+        # Check if file exists on S3
+        if check_s3_object_exists(s3_file_path):
+            # File exists on S3, serve it directly without cloning
+            s3_url = _build_s3_url(s3_file_path)
+            query.s3_url = s3_url
+
+            short_repo_url = f"{query.user_name}/{query.repo_name}"
+
+            # Try to get cached metadata
+            metadata = get_metadata_from_s3(s3_file_path)
+
+            if metadata:
+                # Use cached metadata if available
+                summary = metadata.summary
+                tree = metadata.tree
+                content = metadata.content
+            else:
+                # Fallback to placeholder messages if metadata not available
+                summary = "Digest served from cache (S3). Download the full digest to see content details."
+                tree = "Digest served from cache. Download the full digest to see the file tree."
+                content = "Digest served from cache. Download the full digest to see the content."
+
+            return IngestSuccessResponse(
+                repo_url=input_text,
+                short_repo_url=short_repo_url,
+                summary=summary,
+                digest_url=s3_url,
+                tree=tree,
+                content=content,
+                default_max_file_size=max_file_size,
+                pattern_type=pattern_type,
+                pattern=pattern,
+            )
+    except Exception as exc:
+        # Log the exception but don't fail the entire request
+        logger.warning("S3 cache check failed, falling back to normal cloning: %s", exc)
+
+    return None
+
+
+def _store_digest_content(
+    query: IngestionQuery,
+    clone_config: CloneConfig,
+    digest_content: str,
+    summary: str,
+    tree: str,
+    content: str,
+) -> None:
+    """Store digest content either to S3 or locally based on configuration.
+
+    Parameters
+    ----------
+    query : IngestionQuery
+        The query object containing repository information.
+    clone_config : CloneConfig
+        The clone configuration object.
+    digest_content : str
+        The complete digest content to store.
+    summary : str
+        The summary content for metadata.
+    tree : str
+        The tree content for metadata.
+    content : str
+        The file content for metadata.
+
+    """
+    if is_s3_enabled():
+        # Upload to S3 instead of storing locally
+        s3_file_path = generate_s3_file_path(
+            source=query.url,
+            user_name=cast("str", query.user_name),
+            repo_name=cast("str", query.repo_name),
+            commit=query.commit,
+            include_patterns=query.include_patterns,
+            ignore_patterns=query.ignore_patterns,
+        )
+        s3_url = upload_to_s3(content=digest_content, s3_file_path=s3_file_path, ingest_id=query.id)
+
+        # Also upload metadata JSON for caching
+        metadata = S3Metadata(
+            summary=summary,
+            tree=tree,
+            content=content,
+        )
+        try:
+            upload_metadata_to_s3(metadata=metadata, s3_file_path=s3_file_path, ingest_id=query.id)
+            logger.debug("Successfully uploaded metadata to S3")
+        except Exception as metadata_exc:
+            # Log the error but don't fail the entire request
+            logger.warning("Failed to upload metadata to S3: %s", metadata_exc)
+
+        # Store S3 URL in query for later use
+        query.s3_url = s3_url
+    else:
+        # Store locally
+        local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
+        with local_txt_file.open("w", encoding="utf-8") as f:
+            f.write(digest_content)
+
+
+def _generate_digest_url(query: IngestionQuery) -> str:
+    """Generate the digest URL based on S3 configuration.
+
+    Parameters
+    ----------
+    query : IngestionQuery
+        The query object containing repository information.
+
+    Returns
+    -------
+    str
+        The digest URL.
+
+    Raises
+    ------
+    RuntimeError
+        If S3 is enabled but no S3 URL was generated.
+
+    """
+    if is_s3_enabled():
+        digest_url = getattr(query, "s3_url", None)
+        if not digest_url:
+            # This should not happen if S3 upload was successful
+            msg = "S3 is enabled but no S3 URL was generated"
+            raise RuntimeError(msg)
+        return digest_url
+    return f"/api/download/file/{query.id}"
 
 
 async def process_query(
@@ -69,10 +261,22 @@ async def process_query(
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
     )
 
+    # Check if digest already exists on S3 before cloning
+    s3_response = await _check_s3_cache(
+        query=query,
+        input_text=input_text,
+        max_file_size=max_file_size,
+        pattern_type=pattern_type.value,
+        pattern=pattern,
+        token=token,
+    )
+    if s3_response:
+        return s3_response
+
     clone_config = query.extract_clone_config()
     await clone_repo(clone_config, token=token)
 
-    short_repo_url = f"{query.user_name}/{query.repo_name}"  # Sets the "<user>/<repo>" for the page title
+    short_repo_url = f"{query.user_name}/{query.repo_name}"
 
     # The commit hash should always be available at this point
     if not query.commit:
@@ -81,30 +285,8 @@ async def process_query(
 
     try:
         summary, tree, content = ingest_query(query)
-
-        # Prepare the digest content (tree + content)
         digest_content = tree + "\n" + content
-
-        # Store digest based on S3 configuration
-        if is_s3_enabled():
-            # Upload to S3 instead of storing locally
-            s3_file_path = generate_s3_file_path(
-                source=query.url,
-                user_name=cast("str", query.user_name),
-                repo_name=cast("str", query.repo_name),
-                commit=query.commit,
-                include_patterns=query.include_patterns,
-                ignore_patterns=query.ignore_patterns,
-            )
-            s3_url = upload_to_s3(content=digest_content, s3_file_path=s3_file_path, ingest_id=query.id)
-            # Store S3 URL in query for later use
-            query.s3_url = s3_url
-        else:
-            # Store locally
-            local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
-            with local_txt_file.open("w", encoding="utf-8") as f:
-                f.write(digest_content)
-
+        _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         return IngestErrorResponse(error=str(exc))
@@ -123,15 +305,7 @@ async def process_query(
         summary=summary,
     )
 
-    # Generate digest_url based on S3 configuration
-    if is_s3_enabled():
-        digest_url = getattr(query, "s3_url", None)
-        if not digest_url:
-            # This should not happen if S3 upload was successful
-            msg = "S3 is enabled but no S3 URL was generated"
-            raise RuntimeError(msg)
-    else:
-        digest_url = f"/api/download/file/{query.id}"
+    digest_url = _generate_digest_url(query)
 
     return IngestSuccessResponse(
         repo_url=input_text,

@@ -11,12 +11,20 @@ from uuid import UUID  # noqa: TC003 (typing-only-standard-library-import) neede
 
 import boto3
 from botocore.exceptions import ClientError
+from prometheus_client import Counter
+
+from server.models import S3Metadata
 
 if TYPE_CHECKING:
     from botocore.client import BaseClient
 
+
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
+
+_cache_lookup_counter = Counter("gitingest_cache_lookup", "Number of cache lookups", ["url"])
+_cache_hit_counter = Counter("gitingest_cache_hit", "Number of cache hits", ["url"])
+_cache_miss_counter = Counter("gitingest_cache_miss", "Number of cache misses", ["url"])
 
 
 class S3UploadError(Exception):
@@ -231,6 +239,149 @@ def upload_to_s3(content: str, s3_file_path: str, ingest_id: UUID) -> str:
     return public_url
 
 
+def upload_metadata_to_s3(metadata: S3Metadata, s3_file_path: str, ingest_id: UUID) -> str:
+    """Upload metadata JSON to S3 alongside the digest file.
+
+    Parameters
+    ----------
+    metadata : S3Metadata
+        The metadata struct containing summary, tree, and content.
+    s3_file_path : str
+        The S3 file path for the digest (metadata will use .json extension).
+    ingest_id : UUID
+        The ingest ID to store as an S3 object tag.
+
+    Returns
+    -------
+    str
+        Public URL to access the uploaded metadata file.
+
+    Raises
+    ------
+    ValueError
+        If S3 is not enabled.
+    S3UploadError
+        If the upload to S3 fails.
+
+    """
+    if not is_s3_enabled():
+        msg = "S3 is not enabled"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    # Generate metadata file path by replacing .txt with .json
+    metadata_file_path = s3_file_path.replace(".txt", ".json")
+
+    s3_client = create_s3_client()
+    bucket_name = get_s3_bucket_name()
+
+    extra_fields = {
+        "bucket_name": bucket_name,
+        "metadata_file_path": metadata_file_path,
+        "ingest_id": str(ingest_id),
+        "metadata_size": len(metadata.model_dump_json()),
+    }
+
+    # Log upload attempt
+    logger.debug("Starting S3 metadata upload", extra=extra_fields)
+
+    try:
+        # Upload the metadata with ingest_id as tag
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=metadata_file_path,
+            Body=metadata.model_dump_json(indent=2).encode("utf-8"),
+            ContentType="application/json",
+            Tagging=f"ingest_id={ingest_id!s}",
+        )
+    except ClientError as err:
+        # Log upload failure
+        logger.exception(
+            "S3 metadata upload failed",
+            extra={
+                "bucket_name": bucket_name,
+                "metadata_file_path": metadata_file_path,
+                "ingest_id": str(ingest_id),
+                "error_code": err.response.get("Error", {}).get("Code"),
+                "error_message": str(err),
+            },
+        )
+        msg = f"Failed to upload metadata to S3: {err}"
+        raise S3UploadError(msg) from err
+
+    # Generate public URL
+    alias_host = get_s3_alias_host()
+    if alias_host:
+        # Use alias host if configured
+        public_url = f"{alias_host.rstrip('/')}/{metadata_file_path}"
+    else:
+        # Fallback to direct S3 URL
+        endpoint = get_s3_config().get("endpoint_url")
+        if endpoint:
+            public_url = f"{endpoint.rstrip('/')}/{bucket_name}/{metadata_file_path}"
+        else:
+            public_url = (
+                f"https://{bucket_name}.s3.{get_s3_config()['region_name']}.amazonaws.com/{metadata_file_path}"
+            )
+
+    # Log successful upload
+    logger.debug(
+        "S3 metadata upload completed successfully",
+        extra={
+            "bucket_name": bucket_name,
+            "metadata_file_path": metadata_file_path,
+            "ingest_id": str(ingest_id),
+            "public_url": public_url,
+        },
+    )
+
+    return public_url
+
+
+def get_metadata_from_s3(s3_file_path: str) -> S3Metadata | None:
+    """Retrieve metadata JSON from S3.
+
+    Parameters
+    ----------
+    s3_file_path : str
+        The S3 file path for the digest (metadata will use .json extension).
+
+    Returns
+    -------
+    S3Metadata | None
+        The metadata struct if found, None otherwise.
+
+    """
+    if not is_s3_enabled():
+        return None
+
+    # Generate metadata file path by replacing .txt with .json
+    metadata_file_path = s3_file_path.replace(".txt", ".json")
+
+    try:
+        s3_client = create_s3_client()
+        bucket_name = get_s3_bucket_name()
+
+        # Get the metadata object
+        response = s3_client.get_object(Bucket=bucket_name, Key=metadata_file_path)
+        metadata_content = response["Body"].read().decode("utf-8")
+
+        return S3Metadata.model_validate_json(metadata_content)
+    except ClientError as err:
+        # Object doesn't exist if we get a 404 error
+        error_code = err.response.get("Error", {}).get("Code")
+        if error_code == "404":
+            logger.debug("Metadata file not found: %s", metadata_file_path)
+            return None
+        # Log other errors but don't fail
+        logger.warning("Failed to retrieve metadata from S3: %s", err)
+        return None
+    except Exception as exc:
+        # For any other exception, log and return None
+        logger.warning("Unexpected error retrieving metadata from S3: %s", exc)
+        return None
+
+
 def _build_s3_url(key: str) -> str:
     """Build S3 URL for a given key."""
     alias_host = get_s3_alias_host()
@@ -255,6 +406,51 @@ def _check_object_tags(s3_client: BaseClient, bucket_name: str, key: str, target
         return tags.get("ingest_id") == str(target_ingest_id)
     except ClientError:
         return False
+
+
+def check_s3_object_exists(s3_file_path: str) -> bool:
+    """Check if an S3 object exists at the given path.
+
+    Parameters
+    ----------
+    s3_file_path : str
+        The S3 file path to check.
+
+    Returns
+    -------
+    bool
+        True if the object exists, False otherwise.
+
+    Raises
+    ------
+    ClientError
+        If there's an S3 error other than 404 (not found).
+
+    """
+    if not is_s3_enabled():
+        return False
+    _cache_lookup_counter.labels(url=s3_file_path).inc()
+    try:
+        s3_client = create_s3_client()
+        bucket_name = get_s3_bucket_name()
+
+        # Use head_object to check if the object exists without downloading it
+        s3_client.head_object(Bucket=bucket_name, Key=s3_file_path)
+    except ClientError as err:
+        # Object doesn't exist if we get a 404 error
+        error_code = err.response.get("Error", {}).get("Code")
+        if error_code == "404":
+            _cache_miss_counter.labels(url=s3_file_path).inc()
+            return False
+        # Re-raise other errors (permissions, etc.)
+        raise
+    except Exception:
+        # For any other exception, assume object doesn't exist
+        _cache_miss_counter.labels(url=s3_file_path).inc()
+        return False
+    else:
+        _cache_hit_counter.labels(url=s3_file_path).inc()
+        return True
 
 
 def get_s3_url_for_ingest_id(ingest_id: UUID) -> str | None:
