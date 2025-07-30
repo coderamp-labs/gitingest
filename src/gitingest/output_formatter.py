@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import warnings
+from ssl import SSLError
 from typing import TYPE_CHECKING
 
 import tiktoken
+from requests.exceptions import RequestException
 
 from gitingest.schemas import FileSystemNode, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
@@ -192,8 +195,12 @@ def _format_token_count(text: str) -> str | None:
     try:
         encoding = tiktoken.get_encoding("o200k_base")  # gpt-4o, gpt-4o-mini
         total_tokens = len(encoding.encode(text, disallowed_special=()))
-    except (ValueError, UnicodeEncodeError):
-        logger.exception("Failed to estimate token size.")
+    except (ValueError, UnicodeEncodeError) as exc:
+        warnings.warn(f"Failed to estimate token size: {exc}", RuntimeWarning, stacklevel=3)
+        return None
+    except (RequestException, SSLError) as exc:
+        # If network errors, skip token count estimation instead of erroring out
+        warnings.warn(f"Failed to download tiktoken model: {exc}", RuntimeWarning, stacklevel=3)
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:

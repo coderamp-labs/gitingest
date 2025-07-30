@@ -26,6 +26,7 @@ repos:
 
       - id: trailing-whitespace
         description: 'Trim trailing whitespace.'
+        exclude: CHANGELOG.md
 
       - id: check-docstring-first
         description: 'Check a common error of defining a docstring after code.'
