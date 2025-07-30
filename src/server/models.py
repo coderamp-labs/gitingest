@@ -113,6 +113,25 @@ class IngestErrorResponse(BaseModel):
 IngestResponse = Union[IngestSuccessResponse, IngestErrorResponse]
 
 
+class S3Metadata(BaseModel):
+    """Model for S3 metadata structure.
+
+    Attributes
+    ----------
+    summary : str
+        Summary of the ingestion process including token estimates.
+    tree : str
+        File tree structure of the repository.
+    content : str
+        Processed content from the repository files.
+
+    """
+
+    summary: str = Field(..., description="Ingestion summary with token estimates")
+    tree: str = Field(..., description="File tree structure")
+    content: str = Field(..., description="Processed file content")
+
+
 class QueryForm(BaseModel):
     """Form data for the query.
 
