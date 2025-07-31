@@ -23,7 +23,6 @@ EXAMPLE_REPOS: list[dict[str, str]] = [
 
 
 # Version and repository configuration
-VERSION = os.getenv("VERSION", "unknown")
 APP_REPOSITORY = os.getenv("APP_REPOSITORY", "https://github.com/coderamp-labs/gitingest")
 APP_VERSION = os.getenv("APP_VERSION", "unknown")
 APP_VERSION_URL = os.getenv("APP_VERSION_URL", "https://github.com/coderamp-labs/gitingest")
