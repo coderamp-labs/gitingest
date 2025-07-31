@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/coderamp-labs/gitingest/compare/v0.3.0...v0.3.1) (2025-07-31)
+
+
+### Bug Fixes
+
+* make cache aware of subpaths ([#481](https://github.com/coderamp-labs/gitingest/issues/481)) ([8b59bef](https://github.com/coderamp-labs/gitingest/commit/8b59bef541f858ef44eba8fce6ace77df9dea01c))
+
 ## [0.3.0](https://github.com/coderamp-labs/gitingest/compare/v0.2.1...v0.3.0) (2025-07-30)
 
 
