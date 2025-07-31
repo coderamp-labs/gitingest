@@ -313,8 +313,8 @@ async def process_query(
                 source=query.url,
                 user_name=cast("str", query.user_name),
                 repo_name=cast("str", query.repo_name),
-                subpath=query.subpath,
                 commit=query.commit,
+                subpath=query.subpath,
                 include_patterns=query.include_patterns,
                 ignore_patterns=query.ignore_patterns,
             )
