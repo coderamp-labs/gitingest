@@ -1,8 +1,8 @@
 """Module containing the schemas for the Gitingest package."""
 
 from gitingest.schemas.cloning import CloneConfig
+from gitingest.schemas.contextv1 import ContextV1
 from gitingest.schemas.filesystem import (
-    ContextV1,
     FileSystemDirectory,
     FileSystemFile,
     FileSystemNode,
@@ -23,4 +23,5 @@ __all__ = [
     "FileSystemSymlink",
     "GitRepository",
     "IngestionQuery",
+    "Source",
 ]
