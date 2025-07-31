@@ -3,8 +3,8 @@
         <div class="flex justify-between items-center h-16">
             {# Logo #}
             <div class="flex items-center gap-4">
-                <div class="flex flex-col gap-px">
-                    <h1 class="text-2xl font-bold tracking-tight mb-0">
+                <div class="flex flex-col">
+                    <h1 class="text-3xl font-bold tracking-tight mb-0 leading-none">
                         <a href="/" class="hover:opacity-80 transition-opacity">
                             <span class="text-gray-900">Git</span><span class="text-[#FE4A60]">ingest</span>
                         </a>
@@ -12,7 +12,9 @@
                     <a href="{{ version_link }}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="text-blue-600 hover:text-blue-800 text-sm self-end no-underline">{{ version }}</a>
+                       class="relative self-end text-sm text-blue-600 hover:text-blue-800 no-underline ml-4 -mt-1">
+                        {{ version }}
+                    </a>
                 </div>
             </div>
             {# Navigation with updated styling #}
