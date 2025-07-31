@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
-from gitingest.output_formatter import DebugFormatter, DefaultFormatter, SummaryFormatter
+from gitingest.output_formatter import DefaultFormatter, SummaryFormatter, generate_digest
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
@@ -23,7 +23,6 @@ from server.s3_utils import (
     upload_metadata_to_s3,
     upload_to_s3,
 )
-from gitingest.schemas import ContextV1
 from server.server_config import MAX_DISPLAY_SIZE
 
 # Initialize logger for this module
@@ -314,17 +313,18 @@ async def process_query(
                 source=query.url,
                 user_name=cast("str", query.user_name),
                 repo_name=cast("str", query.repo_name),
+                subpath=query.subpath,
                 commit=query.commit,
                 include_patterns=query.include_patterns,
                 ignore_patterns=query.ignore_patterns,
             )
-            s3_url = upload_to_s3(content=context.digest, s3_file_path=s3_file_path, ingest_id=query.id)
+            s3_url = upload_to_s3(content=generate_digest(context), s3_file_path=s3_file_path, ingest_id=query.id)
             # Store S3 URL in query for later use
             query.s3_url = s3_url
         else:
             # Store locally
             local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
-            print(f"Writing to {local_txt_file}")
+            logger.info("Writing digest to local file", extra={"file_path": str(local_txt_file)})
             with local_txt_file.open("w", encoding="utf-8") as f:
                 f.write(digest)
 
@@ -340,14 +340,6 @@ async def process_query(
             "download full ingest to see more)\n" + digest[:MAX_DISPLAY_SIZE]
         )
 
-    # _print_success(
-    #     url=query.url,
-    #     max_file_size=max_file_size,
-    #     pattern_type=pattern_type,
-    #     pattern=pattern,
-    #     summary=digest,
-    # )
-
     digest_url = _generate_digest_url(query)
 
     # Clean up the repository after successful processing
@@ -358,7 +350,7 @@ async def process_query(
         short_repo_url=short_repo_url,
         summary=summary,
         digest_url=digest_url,
-        tree=context.sources[0].tree, # TODO: this is a hack to get the tree of the first source
+        tree=context.sources[0].tree,  # TODO: this is a hack to get the tree of the first source
         content=digest,
         default_max_file_size=max_file_size,
         pattern_type=pattern_type,

@@ -26,8 +26,10 @@ def _is_git_repository(path: Path) -> bool:
 def ingest_query(query: IngestionQuery) -> ContextV1:
     """Run the ingestion process for a parsed query.
 
-    This is the main entry point for analyzing a codebase directory or single file. It processes the query
-    parameters, reads the file or directory content, and returns a ContextV1 object that can generate the final output digest on demand.
+    This is the main entry point for analyzing a codebase directory or single file.
+
+    It processes the query parameters, reads the file or directory content, and returns
+    a ContextV1 object that can generate the final output digest on demand.
 
     Parameters
     ----------
@@ -37,7 +39,9 @@ def ingest_query(query: IngestionQuery) -> ContextV1:
     Returns
     -------
     ContextV1
-        A ContextV1 object representing the ingested file system nodes. Use generate_digest(context) to get the summary, directory structure, and file contents.
+        A ContextV1 object representing the ingested file system nodes.
+        Use generate_digest(context) to get the summary, directory structure,
+        and file contents.
 
     Raises
     ------
@@ -126,7 +130,7 @@ def ingest_query(query: IngestionQuery) -> ContextV1:
     return ContextV1([root_node], query)
 
 
-def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:
+def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:  # noqa: C901
     """Process a file or directory item within a directory.
 
     This function handles each file or directory item, checking if it should be included or excluded based on the

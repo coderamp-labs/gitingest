@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery
-    from gitingest.schemas import ContextV1
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -138,7 +137,6 @@ async def ingest_async(
             _apply_gitignores(query)
 
         logger.info("Processing files and generating output")
-        summary, tree, content = ingest_query(query)
 
         if output:
             logger.debug("Writing output to file", extra={"output_path": output})
@@ -205,19 +203,20 @@ def ingest(
     ``ingest_async`` : The asynchronous version of this function.
 
     """
-    digest = asyncio.run(ingest_async(
-        source,
-        max_file_size=max_file_size,
-        include_patterns=include_patterns,
-        exclude_patterns=exclude_patterns,
-        branch=branch,
-        tag=tag,
-        include_gitignored=include_gitignored,
-        include_submodules=include_submodules,
-        token=token,
-        output=output,
-    ))
-    return digest
+    return asyncio.run(
+        ingest_async(
+            source,
+            max_file_size=max_file_size,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+            branch=branch,
+            tag=tag,
+            include_gitignored=include_gitignored,
+            include_submodules=include_submodules,
+            token=token,
+            output=output,
+        ),
+    )
 
 
 def _override_branch_and_tag(query: IngestionQuery, branch: str | None, tag: str | None) -> None:
