@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from server.server_config import EXAMPLE_REPOS, templates
+from server.server_config import EXAMPLE_REPOS, get_version_info, templates
 
 router = APIRouter()
 
@@ -27,11 +27,11 @@ async def home(request: Request) -> HTMLResponse:
         and other default parameters such as file size.
 
     """
-    return templates.TemplateResponse(
-        "index.jinja",
-        {
-            "request": request,
-            "examples": EXAMPLE_REPOS,
-            "default_max_file_size": 243,
-        },
-    )
+    context = {
+        "request": request,
+        "examples": EXAMPLE_REPOS,
+        "default_max_file_size": 243,
+    }
+    context.update(get_version_info())
+
+    return templates.TemplateResponse("index.jinja", context)
