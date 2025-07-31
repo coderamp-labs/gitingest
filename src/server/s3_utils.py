@@ -62,6 +62,7 @@ def generate_s3_file_path(
     user_name: str,
     repo_name: str,
     commit: str,
+    subpath: str,
     include_patterns: set[str] | None,
     ignore_patterns: set[str],
 ) -> str:
@@ -69,7 +70,7 @@ def generate_s3_file_path(
 
     The file path is formatted as:
     [<S3_DIRECTORY_PREFIX>/]ingest/<provider>/<repo-owner>/<repo-name>/<branch>/<commit-ID>/
-    <exclude&include hash>/<owner>-<repo-name>.txt
+    <exclude&include hash>/<owner>-<repo-name>-<subpath-hash>.txt
 
     If S3_DIRECTORY_PREFIX environment variable is set, it will be prefixed to the path.
     The commit-ID is always included in the URL.
@@ -85,6 +86,8 @@ def generate_s3_file_path(
         Repository name.
     commit : str
         Commit hash.
+    subpath : str
+        Subpath of the repository.
     include_patterns : set[str] | None
         Set of patterns specifying which files to include.
     ignore_patterns : set[str]
@@ -111,9 +114,10 @@ def generate_s3_file_path(
     patterns_str = f"include:{sorted(include_patterns) if include_patterns else []}"
     patterns_str += f"exclude:{sorted(ignore_patterns)}"
     patterns_hash = hashlib.sha256(patterns_str.encode()).hexdigest()[:16]
+    subpath_hash = hashlib.sha256(subpath.encode()).hexdigest()[:16]
 
-    # Build the base path using hostname directly
-    base_path = f"ingest/{hostname}/{user_name}/{repo_name}/{commit}/{patterns_hash}/{user_name}-{repo_name}.txt"
+    file_name = f"{user_name}-{repo_name}-{subpath_hash}.txt"
+    base_path = f"ingest/{hostname}/{user_name}/{repo_name}/{commit}/{patterns_hash}/{file_name}"
 
     # Check for S3_DIRECTORY_PREFIX environment variable
     s3_directory_prefix = os.getenv("S3_DIRECTORY_PREFIX")

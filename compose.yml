@@ -21,7 +21,7 @@ x-prod-environment: &prod-environment
 
 x-dev-environment: &dev-environment
   DEBUG: "true"
-  LOG_LEVEL: "debug"
+  LOG_LEVEL: "DEBUG"
   RELOAD: "true"
   GITINGEST_SENTRY_ENVIRONMENT: ${GITINGEST_SENTRY_ENVIRONMENT:-development}
   # S3 Configuration for development
