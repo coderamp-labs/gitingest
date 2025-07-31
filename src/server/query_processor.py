@@ -23,7 +23,7 @@ from server.s3_utils import (
     upload_metadata_to_s3,
     upload_to_s3,
 )
-from gitingest.schemas import Context
+from gitingest.schemas import ContextV1
 from server.server_config import MAX_DISPLAY_SIZE
 
 # Initialize logger for this module

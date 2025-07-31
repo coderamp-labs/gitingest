@@ -1,0 +1,7 @@
+{%- if node.depth == 0 %}🔗 Git Repository: {{ node.name }}
+{{ node.tree }}
+
+{% endif -%}
+{%- for child in node.children -%}
+{{ formatter.format(child, query) }}
+{%- endfor -%}

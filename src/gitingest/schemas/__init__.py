@@ -2,7 +2,7 @@
 
 from gitingest.schemas.cloning import CloneConfig
 from gitingest.schemas.filesystem import (
-    Context,
+    ContextV1,
     FileSystemDirectory,
     FileSystemFile,
     FileSystemNode,
@@ -15,7 +15,7 @@ from gitingest.schemas.ingestion import IngestionQuery
 
 __all__ = [
     "CloneConfig",
-    "Context",
+    "ContextV1",
     "FileSystemDirectory",
     "FileSystemFile",
     "FileSystemNode",

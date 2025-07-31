@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock
 from gitingest.output_formatter import DefaultFormatter
-from gitingest.schemas.filesystem import Context, GitRepository, FileSystemFile
+from gitingest.schemas.filesystem import ContextV1, GitRepository, FileSystemFile
 
 # Create a mock query
 mock_query = Mock()
@@ -25,7 +25,7 @@ mock_repo = GitRepository(
 )
 
 # Create context
-context = Context([mock_repo], mock_query)
+context = ContextV1([mock_repo], mock_query)
 
 # Test formatting
 formatter = DefaultFormatter()

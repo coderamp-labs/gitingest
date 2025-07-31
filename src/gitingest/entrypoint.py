@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery
-    from gitingest.schemas import Context
+    from gitingest.schemas import ContextV1
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -52,7 +52,7 @@ async def ingest_async(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a single digest string.
 
-    The output is generated lazily using a Context object and the generate_digest() function.
+    The output is generated lazily using a ContextV1 object and the generate_digest() function.
 
     Parameters
     ----------
@@ -167,7 +167,7 @@ def ingest(
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
     and processes its files according to the specified query parameters. It returns a single digest string.
 
-    The output is generated lazily using a Context object and the generate_digest() function.
+    The output is generated lazily using a ContextV1 object and the generate_digest() function.
 
     Parameters
     ----------
