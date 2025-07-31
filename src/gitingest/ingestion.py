@@ -291,7 +291,7 @@ def limit_exceeded(stats: FileSystemStats, depth: int) -> bool:
     """Check if any of the traversal limits have been exceeded.
 
     This function checks if the current traversal has exceeded any of the configured limits:
-    maximum directory depth, ma ximum number of files, or maximum total size in bytes.
+    maximum directory depth, maximum number of files, or maximum total size in bytes.
 
     Parameters
     ----------
