@@ -47,6 +47,19 @@ jobs:
           echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # If we're on a tag, use the tag name as version
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            # If we're not on a tag, use branch-commit-hash format
+            BRANCH_NAME="${{ github.ref_name }}"
+            COMMIT_HASH="${{ steps.vars.outputs.sha_short }}"
+            echo "version=${BRANCH_NAME}-${COMMIT_HASH}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -78,5 +91,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            REPOSITORY_URL=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
