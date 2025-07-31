@@ -42,14 +42,24 @@ def get_version_info() -> dict[str, str]:
     version = VERSION
     repo_url = REPOSITORY_URL.rstrip("/")
 
-    # Check if version looks like a tag (doesn't contain branch-commit pattern)
-    if version != "unknown" and "-" in version and len(version.split("-")) >= MIN_BRANCH_COMMIT_PARTS:
-        # This looks like branch-commit format (e.g., "main-abc1234")
+    # Check if version contains PR number (e.g., "pr-123", "pull-456")
+    if version != "unknown" and ("-" in version):
         parts = version.split("-")
         if len(parts) >= MIN_BRANCH_COMMIT_PARTS:
-            # Take the last part as commit hash
-            commit_hash = parts[-1]
-            version_link = f"{repo_url}/commit/{commit_hash}"
+            # Check if first part indicates a PR
+            if parts[0].lower() in ("pr", "pull"):
+                # Extract PR number from the second part
+                try:
+                    pr_number = int(parts[1])
+                    version_link = f"{repo_url}/pull/{pr_number}"
+                except (ValueError, IndexError):
+                    # If PR number is invalid, fallback to main branch
+                    version_link = f"{repo_url}/tree/main"
+            else:
+                # This looks like branch-commit format (e.g., "main-abc1234")
+                # Take the last part as commit hash
+                commit_hash = parts[-1]
+                version_link = f"{repo_url}/commit/{commit_hash}"
         else:
             # Fallback to main branch
             version_link = f"{repo_url}/tree/main"
