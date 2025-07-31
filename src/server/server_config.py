@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
@@ -19,6 +20,35 @@ EXAMPLE_REPOS: list[dict[str, str]] = [
     {"name": "Excalidraw", "url": "https://github.com/excalidraw/excalidraw"},
     {"name": "ApiAnalytics", "url": "https://github.com/tom-draper/api-analytics"},
 ]
+
+
+# Version and repository configuration
+APP_REPOSITORY = os.getenv("APP_REPOSITORY", "https://github.com/coderamp-labs/gitingest")
+APP_VERSION = os.getenv("APP_VERSION", "unknown")
+APP_VERSION_URL = os.getenv("APP_VERSION_URL", "https://github.com/coderamp-labs/gitingest")
+
+
+def get_version_info() -> dict[str, str]:
+    """Get version information including display version and link.
+
+    Returns
+    -------
+    dict[str, str]
+        Dictionary containing 'version' and 'version_link' keys.
+
+    """
+    # Use pre-computed values from GitHub Actions
+    display_version = APP_VERSION
+    version_link = APP_VERSION_URL
+
+    # Fallback to repository root if no URL is provided
+    if version_link == APP_REPOSITORY or not version_link:
+        version_link = f"{APP_REPOSITORY.rstrip('/')}/tree/main"
+
+    return {
+        "version": display_version,
+        "version_link": version_link,
+    }
 
 
 # Use absolute path to templates directory
