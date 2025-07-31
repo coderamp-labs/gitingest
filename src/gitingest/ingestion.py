@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
-from gitingest.schemas import Context, FileSystemNode, FileSystemStats
+from gitingest.schemas import ContextV1, FileSystemNode, FileSystemStats
 from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemFile, FileSystemSymlink, GitRepository
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 from gitingest.utils.logging_config import get_logger
@@ -23,11 +23,11 @@ def _is_git_repository(path: Path) -> bool:
     return (path / ".git").exists()
 
 
-def ingest_query(query: IngestionQuery) -> Context:
+def ingest_query(query: IngestionQuery) -> ContextV1:
     """Run the ingestion process for a parsed query.
 
     This is the main entry point for analyzing a codebase directory or single file. It processes the query
-    parameters, reads the file or directory content, and returns a Context object that can generate the final output digest on demand.
+    parameters, reads the file or directory content, and returns a ContextV1 object that can generate the final output digest on demand.
 
     Parameters
     ----------
@@ -36,8 +36,8 @@ def ingest_query(query: IngestionQuery) -> Context:
 
     Returns
     -------
-    Context
-        A Context object representing the ingested file system nodes. Use generate_digest(context) to get the summary, directory structure, and file contents.
+    ContextV1
+        A ContextV1 object representing the ingested file system nodes. Use generate_digest(context) to get the summary, directory structure, and file contents.
 
     Raises
     ------
@@ -92,7 +92,7 @@ def ingest_query(query: IngestionQuery) -> Context:
                 "file_size": file_node.size,
             },
         )
-        return Context([file_node], query)
+        return ContextV1([file_node], query)
 
     # Check if this is a git repository and create appropriate node type
     if _is_git_repository(path):
@@ -123,7 +123,7 @@ def ingest_query(query: IngestionQuery) -> Context:
         },
     )
 
-    return Context([root_node], query)
+    return ContextV1([root_node], query)
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:

@@ -1,0 +1,11 @@
+# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
+
+Sources used:
+{%- for source in context.sources %}
+- {{ source.name }}: {{ source.__class__.__name__ }}
+{% endfor %}
+
+{%- for source in context.sources %}
+{{ formatter.format(source, context.query) }}
+{%- endfor %}
+# End of generated content

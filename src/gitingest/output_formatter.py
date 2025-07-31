@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import ssl
 from functools import singledispatchmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests.exceptions
 import tiktoken
-from jinja2 import BaseLoader, Environment
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from gitingest.schemas import FileSystemDirectory, FileSystemFile, FileSystemNode, FileSystemSymlink, Source
-from gitingest.schemas.filesystem import SEPARATOR, Context, FileSystemNodeType, GitRepository
+from gitingest.schemas.filesystem import SEPARATOR, ContextV1, FileSystemNodeType, GitRepository
 from gitingest.utils.compat_func import readlink
 from gitingest.utils.logging_config import get_logger
 
@@ -178,15 +179,15 @@ def _format_token_count(text: str) -> str | None:
     return str(total_tokens)
 
 
-def generate_digest(context: Context) -> str:
-    """Generate a digest string from a Context object.
+def generate_digest(context: ContextV1) -> str:
+    """Generate a digest string from a ContextV1 object.
     
-    This is a convenience function that uses the DefaultFormatter to format a Context.
+    This is a convenience function that uses the DefaultFormatter to format a ContextV1.
     
     Parameters
     ----------
-    context : Context
-        The Context object containing sources and query information.
+    context : ContextV1
+        The ContextV1 object containing sources and query information.
     
     Returns
     -------
@@ -200,143 +201,125 @@ def generate_digest(context: Context) -> str:
 class DefaultFormatter:
     def __init__(self):
         self.separator = SEPARATOR
-        self.env = Environment(loader=BaseLoader())
+        template_dir = Path(__file__).parent / "format" / "DefaultFormatter"
+        self.env = Environment(loader=FileSystemLoader(template_dir))
+    
+    def _get_template_for_node(self, node):
+        """Get template based on node class name."""
+        template_name = f"{node.__class__.__name__}.j2"
+        return self.env.get_template(template_name)
 
     @singledispatchmethod
     def format(self, node: Source, query):
-        return f"{getattr(node, 'content', '')}"
-
-    @format.register
-    def _(self, node: FileSystemFile, query):
-        template = """
-{{ SEPARATOR }}
-{{ node.name }}
-{{ SEPARATOR }}
-{{ node.content }}
-"""
-        file_template = self.env.from_string(template)
-        return file_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
-
-    @format.register
-    def _(self, node: FileSystemDirectory, query):
-        template = """{%- if node.depth == 0 %}{{ node.name }}:
-{{ node.tree }}
-
-{% endif -%}
-{%- for child in node.children -%}
-{{ formatter.format(child, query) }}
-{%- endfor -%}"""
-        dir_template = self.env.from_string(template)
-        return dir_template.render(node=node, query=query, formatter=self)
-
-    @format.register
-    def _(self, node: GitRepository, query):
-        template = """{%- if node.depth == 0 %}🔗 Git Repository: {{ node.name }}
-{{ node.tree }}
-
-{% endif -%}
-{%- for child in node.children -%}
-{{ formatter.format(child, query) }}
-{%- endfor -%}"""
-        git_template = self.env.from_string(template)
-        return git_template.render(node=node, query=query, formatter=self)
-
-    @format.register
-    def _(self, node: FileSystemSymlink, query):
-        template = """
-{{ SEPARATOR }}
-{{ node.name }}{% if node.target %} -> {{ node.target }}{% endif %}
-{{ SEPARATOR }}
-"""
-        symlink_template = self.env.from_string(template)
-        return symlink_template.render(SEPARATOR=SEPARATOR, node=node, query=query, formatter=self)
-
-    @format.register
-    def _(self, context: Context, query):
-        """Format a Context by formatting all its sources."""
-        template = \
-"""# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}
-
-Sources used:
-{%- for source in context.sources %}
-- {{ source.name }}: {{ source.__class__.__name__ }}
-{% endfor %}
-
-{%- for source in context.sources %}
-{{ formatter.format(source, context.query) }}
-{%- endfor %}
-# End of generated content"""
-        context_template = self.env.from_string(template)
-        return context_template.render(context=context, formatter=self)
+        """Dynamically format any node type based on available templates."""
+        try:
+            template = self._get_template_for_node(node)
+            # Provide common template variables
+            context_vars = {
+                'node': node,
+                'query': query, 
+                'formatter': self,
+                'SEPARATOR': SEPARATOR
+            }
+            # Special handling for ContextV1 objects
+            if isinstance(node, ContextV1):
+                context_vars['context'] = node
+                # Use ContextV1 for backward compatibility
+                template = self.env.get_template("ContextV1.j2")
+            
+            return template.render(**context_vars)
+        except TemplateNotFound:
+            # Fallback: return content if available, otherwise empty string
+            return f"{getattr(node, 'content', '')}"
 
 
 class DebugFormatter:
     def __init__(self):
         self.separator = SEPARATOR
-        self.env = Environment(loader=BaseLoader())
+        template_dir = Path(__file__).parent / "format" / "DebugFormatter"
+        self.env = Environment(loader=FileSystemLoader(template_dir))
+    
+    def _get_template_for_node(self, node):
+        """Get template based on node class name."""
+        template_name = f"{node.__class__.__name__}.j2"
+        return self.env.get_template(template_name)
 
     @singledispatchmethod
     def format(self, node: Source, query):
-        """Format any Source type with debug information."""
-        # Get the actual class name
-        class_name = node.__class__.__name__
-
-        # Get all field names (both from dataclass fields and regular attributes)
-        field_names = []
-
-        # Try to get dataclass fields first
+        """Dynamically format any node type with debug information."""
         try:
-            if hasattr(node, "__dataclass_fields__") and hasattr(node.__dataclass_fields__, "keys"):
-                field_names.extend(node.__dataclass_fields__.keys())
-            else:
-                raise AttributeError  # Fall through to backup method
-        except (AttributeError, TypeError):
-            # Fall back to getting all non-private attributes
-            field_names = [
-                attr for attr in dir(node) if not attr.startswith("_") and not callable(getattr(node, attr, None))
-            ]
+            # Get the actual class name
+            class_name = node.__class__.__name__
 
-        # Format the debug output
-        fields_str = ", ".join(field_names)
-        template = """
-{{ SEPARATOR }}
-DEBUG: {{ class_name }}
-Fields: {{ fields_str }}
-{{ SEPARATOR }}
-"""
-        debug_template = self.env.from_string(template)
-        return debug_template.render(
-            SEPARATOR=SEPARATOR,
-            class_name=class_name,
-            fields_str=fields_str,
-        )
+            # Get all field names (both from dataclass fields and regular attributes)
+            field_names = []
+
+            # Try to get dataclass fields first
+            try:
+                if hasattr(node, "__dataclass_fields__") and hasattr(node.__dataclass_fields__, "keys"):
+                    field_names.extend(node.__dataclass_fields__.keys())
+                else:
+                    raise AttributeError  # Fall through to backup method
+            except (AttributeError, TypeError):
+                # Fall back to getting all non-private attributes
+                field_names = [
+                    attr for attr in dir(node) if not attr.startswith("_") and not callable(getattr(node, attr, None))
+                ]
+
+            # Format the debug output
+            fields_str = ", ".join(field_names)
+            
+            # Try to get specific template, fallback to Source.j2
+            try:
+                template = self._get_template_for_node(node)
+            except TemplateNotFound:
+                template = self.env.get_template("Source.j2")
+                
+            return template.render(
+                SEPARATOR=SEPARATOR,
+                class_name=class_name,
+                fields_str=fields_str,
+                node=node,
+                query=query,
+                formatter=self
+            )
+        except TemplateNotFound:
+            # Ultimate fallback
+            return f"DEBUG: {node.__class__.__name__}"
 
 
 class SummaryFormatter:
     """Dedicated formatter for generating summaries of filesystem nodes."""
 
     def __init__(self):
-        self.env = Environment(loader=BaseLoader())
+        template_dir = Path(__file__).parent / "format" / "SummaryFormatter"
+        self.env = Environment(loader=FileSystemLoader(template_dir))
+    
+    def _get_template_for_node(self, node):
+        """Get template based on node class name."""
+        template_name = f"{node.__class__.__name__}.j2"
+        return self.env.get_template(template_name)
 
     @singledispatchmethod
     def summary(self, node: Source, query):
-        return f"{getattr(node, 'name', '')}"
-
-    @summary.register
-    def _(self, node: FileSystemDirectory, query):
-        template = """ \
-Directory structure:
-{{ node.tree }}
-"""
-        summary_template = self.env.from_string(template)
-        return summary_template.render(node=node, query=query)
-
-    @summary.register
-    def _(self, context: Context, query):
-        template = """
-Repository: {{ context.query.user_name }}/{{ context.query.repo_name }}
-Commit: {{ context.query.commit }}
-Files analyzed: {{ context.sources[0].file_count }}
-"""
-        summary_template = self.env.from_string(template)
-        return summary_template.render(context=context, query=query)
+        """Dynamically generate summary for any node type based on available templates."""
+        try:
+            # Provide common template variables
+            context_vars = {
+                'node': node,
+                'query': query,
+                'formatter': self
+            }
+            
+            # Special handling for ContextV1 objects
+            if isinstance(node, ContextV1):
+                context_vars['context'] = node
+                # Use ContextV1 for backward compatibility
+                template = self.env.get_template("ContextV1.j2")
+            else:
+                template = self._get_template_for_node(node)
+            
+            return template.render(**context_vars)
+        except TemplateNotFound:
+            # Fallback: return name if available
+            return f"{getattr(node, 'name', '')}"

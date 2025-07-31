@@ -134,8 +134,8 @@ class FileSystemSymlink(FileSystemNode):
         return [f"{prefix}{current_prefix}{display_name}"]
 
 
-class Context(Source):
-    """The Context object is a general container for multiple unrelated sources.
+class ContextV1(Source):
+    """The ContextV1 object is a general container for multiple unrelated sources.
 
     Attributes
     ----------
