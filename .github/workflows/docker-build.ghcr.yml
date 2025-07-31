@@ -50,18 +50,35 @@ jobs:
         run: |
           echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Determine version
+      - name: Determine version and deployment context
         id: version
         run: |
+          REPO_URL="https://github.com/${{ github.repository }}"
+
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # If we're on a tag, use the tag name as version
+            # Tag deployment - display version, link to release
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "deployment_type=tag" >> $GITHUB_OUTPUT
+            echo "app_version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "app_version_url=${REPO_URL}/releases/tag/${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR deployment - display pr-XXX, link to PR commit
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            COMMIT_HASH="${{ steps.vars.outputs.sha_full }}"
+            echo "version=${PR_NUMBER}/merge-${COMMIT_HASH}" >> $GITHUB_OUTPUT
+            echo "deployment_type=pr" >> $GITHUB_OUTPUT
+            echo "app_version=pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "app_version_url=${REPO_URL}/pull/${PR_NUMBER}/commits/${COMMIT_HASH}" >> $GITHUB_OUTPUT
           else
-            # If we're not on a tag, use branch-commit-hash format
+            # Branch deployment - display branch name, link to commit
             BRANCH_NAME="${{ github.ref_name }}"
-            COMMIT_HASH="${{ steps.vars.outputs.sha_short }}"
+            COMMIT_HASH="${{ steps.vars.outputs.sha_full }}"
             echo "version=${BRANCH_NAME}-${COMMIT_HASH}" >> $GITHUB_OUTPUT
+            echo "deployment_type=branch" >> $GITHUB_OUTPUT
+            echo "app_version=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+            echo "app_version_url=${REPO_URL}/commit/${COMMIT_HASH}" >> $GITHUB_OUTPUT
           fi
 
       - name: Log in to the Container registry
@@ -102,7 +119,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
-            REPOSITORY_URL=https://github.com/${{ github.repository }}
+            APP_REPOSITORY=https://github.com/${{ github.repository }}
+            APP_VERSION=${{ steps.version.outputs.app_version }}
+            APP_VERSION_URL=${{ steps.version.outputs.app_version_url }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
