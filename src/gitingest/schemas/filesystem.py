@@ -142,7 +142,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         if chunk == b"":
             return "[Empty file]"
 
-        if not _decodes(chunk, "utf-8"):
+        if is_binary_file(chunk):
             return "[Binary file]"
 
         # Find the first encoding that decodes the sample
@@ -159,3 +159,15 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
                 return fp.read()
         except (OSError, UnicodeDecodeError) as exc:
             return f"Error reading file with {good_enc!r}: {exc}"
+
+
+def is_binary_file(file_contents: bytes | None) -> bool:
+    """Check whether a file is binary by reading its first 1024 bytes and looking for non-text characters."""
+    if not file_contents:
+        return False  # Empty files are not binary
+
+    text_characters = bytes(
+        {7, 8, 9, 10, 12, 13, 27}.union(set(range(0x20, 0x100)) - {0x7F}),
+    )
+    # If translate returns any bytes, those are non-text (binary) bytes
+    return bool(file_contents.translate(None, text_characters))
