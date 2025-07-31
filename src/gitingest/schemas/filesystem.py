@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from gitingest.schemas import IngestionQuery
 
 SEPARATOR = "=" * 48  # Tiktoken, the tokenizer openai uses, counts 2 tokens if we have more than 48
 
@@ -35,9 +34,15 @@ class FileSystemStats:
 class Source(ABC):
     """Abstract base class for all sources (files, directories, etc)."""
 
+    @abstractmethod
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this source."""
+
 
 @dataclass
 class FileSystemNode(Source):
+    """Base class for filesystem nodes (files, directories, symlinks)."""
+
     name: str
     path_str: str
     path: Path
@@ -45,28 +50,34 @@ class FileSystemNode(Source):
     size: int = 0
 
     @property
-    def tree(self):
+    def tree(self) -> str:
+        """Return the name of this node."""
         return self.name
 
 
 @dataclass
 class FileSystemFile(FileSystemNode):
+    """Represents a file in the filesystem."""
+
     @property
-    def content(self):
+    def content(self) -> str:
+        """Read and return the content of the file."""
         # read the file
         try:
-            with open(self.path) as f:
-                return f.read()
+            return self.path.read_text(encoding="utf-8")
         except Exception as e:
             return f"Error reading content of {self.name}: {e}"
 
-    def render_tree(self, prefix="", is_last=True):
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this file."""
         current_prefix = "└── " if is_last else "├── "
         return [f"{prefix}{current_prefix}{self.name}"]
 
 
 @dataclass
 class FileSystemDirectory(FileSystemNode):
+    """Represents a directory in the filesystem."""
+
     children: list[FileSystemNode] = field(default_factory=list)
     file_count: int = 0
     dir_count: int = 0
@@ -86,7 +97,8 @@ class FileSystemDirectory(FileSystemNode):
 
         self.children.sort(key=_sort_key)
 
-    def render_tree(self, prefix="", is_last=True):
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this directory."""
         lines = []
         current_prefix = "└── " if is_last else "├── "
         display_name = self.name + "/"
@@ -99,7 +111,8 @@ class FileSystemDirectory(FileSystemNode):
         return lines
 
     @property
-    def tree(self):
+    def tree(self) -> str:
+        """Return the tree representation of this directory."""
         return "\n".join(self.render_tree())
 
 
@@ -109,7 +122,8 @@ class GitRepository(FileSystemDirectory):
 
     git_info: dict = field(default_factory=dict)  # Store git metadata like branch, commit, etc.
 
-    def render_tree(self, prefix="", is_last=True):
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this git repository."""
         lines = []
         current_prefix = "└── " if is_last else "├── "
         # Mark as git repo in the tree
@@ -125,27 +139,13 @@ class GitRepository(FileSystemDirectory):
 
 @dataclass
 class FileSystemSymlink(FileSystemNode):
+    """Represents a symbolic link in the filesystem."""
+
     target: str = ""
     # Add symlink-specific fields if needed
 
-    def render_tree(self, prefix="", is_last=True):
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this symlink."""
         current_prefix = "└── " if is_last else "├── "
         display_name = f"{self.name} -> {self.target}" if self.target else self.name
         return [f"{prefix}{current_prefix}{display_name}"]
-
-
-class ContextV1(Source):
-    """The ContextV1 object is a general container for multiple unrelated sources.
-
-    Attributes
-    ----------
-    sources : list[Source]
-        The list of source objects to format.
-    query : IngestionQuery
-        The query context.
-
-    """
-
-    def __init__(self, sources: list[Source], query: IngestionQuery):
-        self.sources = sources
-        self.query = query
