@@ -20,14 +20,12 @@ FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb5
 
 ARG UID=1000
 ARG GID=1000
-ARG VERSION=unknown
 ARG APP_REPOSITORY=https://github.com/coderamp-labs/gitingest
 ARG APP_VERSION=unknown
 ARG APP_VERSION_URL=https://github.com/coderamp-labs/gitingest
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    VERSION=${VERSION} \
     APP_REPOSITORY=${APP_REPOSITORY} \
     APP_VERSION=${APP_VERSION} \
     APP_VERSION_URL=${APP_VERSION_URL}
