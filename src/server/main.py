@@ -14,13 +14,18 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+# Import logging configuration first to intercept all logging
+from gitingest.utils.logging_config import get_logger
 from server.metrics_server import start_metrics_server
 from server.routers import dynamic, index, ingest
 from server.server_config import templates
-from server.server_utils import lifespan, limiter, rate_limit_exception_handler
+from server.server_utils import limiter, rate_limit_exception_handler
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # Initialize Sentry SDK if enabled
 if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
@@ -31,7 +36,8 @@ if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
         # Configure Sentry options from environment variables
         traces_sample_rate = float(os.getenv("GITINGEST_SENTRY_TRACES_SAMPLE_RATE", "1.0"))
         profile_session_sample_rate = float(os.getenv("GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE", "1.0"))
-        profile_lifecycle = os.getenv("GITINGEST_SENTRY_PROFILE_LIFECYCLE", "trace")
+        profile_lifecycle_raw = os.getenv("GITINGEST_SENTRY_PROFILE_LIFECYCLE", "trace")
+        profile_lifecycle = profile_lifecycle_raw if profile_lifecycle_raw in ("manual", "trace") else "trace"
         send_default_pii = os.getenv("GITINGEST_SENTRY_SEND_DEFAULT_PII", "true").lower() == "true"
         sentry_environment = os.getenv("GITINGEST_SENTRY_ENVIRONMENT", "")
 
@@ -49,8 +55,8 @@ if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
             environment=sentry_environment,
         )
 
-# Initialize the FastAPI application with lifespan
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+# Initialize the FastAPI application
+app = FastAPI(docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 
 # Register the custom exception handler for rate limits

@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import TYPE_CHECKING
 
+import requests.exceptions
 import tiktoken
 
 from gitingest.schemas import FileSystemNode, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
+from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
-    from gitingest.query_parser import IngestionQuery
+    from gitingest.schemas import IngestionQuery
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
     (1_000_000, "M"),
@@ -82,10 +88,13 @@ def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) 
         # Local scenario
         parts.append(f"Directory: {query.slug}")
 
-    if query.commit:
-        parts.append(f"Commit: {query.commit}")
+    if query.tag:
+        parts.append(f"Tag: {query.tag}")
     elif query.branch and query.branch not in ("main", "master"):
         parts.append(f"Branch: {query.branch}")
+
+    if query.commit:
+        parts.append(f"Commit: {query.commit}")
 
     if query.subpath != "/" and not single_file:
         parts.append(f"Subpath: {query.subpath}")
@@ -187,7 +196,11 @@ def _format_token_count(text: str) -> str | None:
         encoding = tiktoken.get_encoding("o200k_base")  # gpt-4o, gpt-4o-mini
         total_tokens = len(encoding.encode(text, disallowed_special=()))
     except (ValueError, UnicodeEncodeError) as exc:
-        print(exc)
+        logger.warning("Failed to estimate token size", extra={"error": str(exc)})
+        return None
+    except (requests.exceptions.RequestException, ssl.SSLError) as exc:
+        # If network errors, skip token count estimation instead of erroring out
+        logger.warning("Failed to download tiktoken model", extra={"error": str(exc)})
         return None
 
     for threshold, suffix in _TOKEN_THRESHOLDS:

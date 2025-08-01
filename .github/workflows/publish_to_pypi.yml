@@ -2,7 +2,7 @@ name: Publish to PyPI
 
 on:
   release:
-    types: [created] # Run when you click “Publish release”
+    types: [created] # Run when you click "Publish release"
   workflow_dispatch: # ... or run it manually from the Actions tab
 
 permissions:
@@ -31,6 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install build twine
+          python -m build
           twine check dist/*
       - name: Upload dist artefact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -38,7 +39,7 @@ jobs:
           name: dist
           path: dist/
 
-# Publish to PyPI (only if “dist/” succeeded)
+# Publish to PyPI (only if "dist/" succeeded)
   pypi-publish:
     needs: release-build
     runs-on: ubuntu-latest

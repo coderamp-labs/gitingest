@@ -1,5 +1,5 @@
 # Stage 1: Install Python dependencies
-FROM python:3.13-slim@sha256:6544e0e002b40ae0f59bc3618b07c1e48064c4faed3a15ae2fbd2e8f663e8283 AS python-builder
+FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419 AS python-builder
 
 WORKDIR /build
 
@@ -13,10 +13,10 @@ COPY src/ ./src/
 
 RUN set -eux; \
     pip install --no-cache-dir --upgrade pip; \
-    pip install --no-cache-dir --timeout 1000 .
+    pip install --no-cache-dir --timeout 1000 .[server]
 
 # Stage 2: Runtime image
-FROM python:3.13-slim@sha256:6544e0e002b40ae0f59bc3618b07c1e48064c4faed3a15ae2fbd2e8f663e8283
+FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419
 
 ARG UID=1000
 ARG GID=1000
@@ -44,4 +44,4 @@ USER appuser
 
 EXPOSE 8000
 EXPOSE 9090
-CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "server"]

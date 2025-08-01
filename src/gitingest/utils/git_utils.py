@@ -6,7 +6,8 @@ import asyncio
 import base64
 import re
 import sys
-from typing import Final
+from pathlib import Path
+from typing import TYPE_CHECKING, Final, Iterable
 from urllib.parse import urlparse
 
 import httpx
@@ -14,7 +15,13 @@ from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBID
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from server.server_utils import Colors
+from gitingest.utils.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from gitingest.schemas import CloneConfig
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # GitHub Personal-Access tokens (classic + fine-grained).
 #   - ghp_ / gho_ / ghu_ / ghs_ / ghr_  → 36 alphanumerics
@@ -93,13 +100,12 @@ async def ensure_git_installed() -> None:
         try:
             stdout, _ = await run_command("git", "config", "core.longpaths")
             if stdout.decode().strip().lower() != "true":
-                print(
-                    f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}Git clone may fail on Windows "
-                    f"due to long file paths:{Colors.END}",
+                logger.warning(
+                    "Git clone may fail on Windows due to long file paths. "
+                    "Consider enabling long path support with: 'git config --global core.longpaths true'. "
+                    "Note: This command may require administrator privileges.",
+                    extra={"platform": "windows", "longpaths_enabled": False},
                 )
-                print(f"{Colors.RED}To avoid this issue, consider enabling long path support with:{Colors.END}")
-                print(f"{Colors.RED}    git config --global core.longpaths true{Colors.END}")
-                print(f"{Colors.RED}Note: This command may require administrator privileges.{Colors.END}")
         except RuntimeError:
             # Ignore if checking 'core.longpaths' fails.
             pass
@@ -237,7 +243,6 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
 
     await ensure_git_installed()
     stdout, _ = await run_command(*cmd)
-
     # For each line in the output:
     # - Skip empty lines and lines that don't contain "refs/{to_fetch}/"
     # - Extract the branch or tag name after "refs/{to_fetch}/"
@@ -321,3 +326,126 @@ def validate_github_token(token: str) -> None:
     """
     if not re.fullmatch(_GITHUB_PAT_PATTERN, token):
         raise InvalidGitHubTokenError
+
+
+async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None:
+    """Configure sparse-checkout for a partially cloned repository.
+
+    Parameters
+    ----------
+    config : CloneConfig
+        The configuration for cloning the repository, including subpath and blob flag.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    """
+    subpath = config.subpath.lstrip("/")
+    if config.blob:
+        # Remove the file name from the subpath when ingesting from a file url (e.g. blob/branch/path/file.txt)
+        subpath = str(Path(subpath).parent.as_posix())
+    checkout_cmd = create_git_command(["git"], config.local_path, config.url, token)
+    await run_command(*checkout_cmd, "sparse-checkout", "set", subpath)
+
+
+async def resolve_commit(config: CloneConfig, token: str | None) -> str:
+    """Resolve the commit to use for the clone.
+
+    Parameters
+    ----------
+    config : CloneConfig
+        The configuration for cloning the repository.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Returns
+    -------
+    str
+        The commit SHA.
+
+    """
+    if config.commit:
+        commit = config.commit
+    elif config.tag:
+        commit = await _resolve_ref_to_sha(config.url, pattern=f"refs/tags/{config.tag}*", token=token)
+    elif config.branch:
+        commit = await _resolve_ref_to_sha(config.url, pattern=f"refs/heads/{config.branch}", token=token)
+    else:
+        commit = await _resolve_ref_to_sha(config.url, pattern="HEAD", token=token)
+    return commit
+
+
+async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) -> str:
+    """Return the commit SHA that <kind>/<ref> points to in <url>.
+
+    * Branch → first line from ``git ls-remote``.
+    * Tag    → if annotated, prefer the peeled ``^{}`` line (commit).
+
+    Parameters
+    ----------
+    url : str
+        The URL of the remote repository.
+    pattern : str
+        The pattern to use to resolve the commit SHA.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Returns
+    -------
+    str
+        The commit SHA.
+
+    Raises
+    ------
+    ValueError
+        If the ref does not exist in the remote repository.
+
+    """
+    # Build: git [-c http.<host>/.extraheader=Auth...] ls-remote <url> <pattern>
+    cmd: list[str] = ["git"]
+    if token and is_github_host(url):
+        cmd += ["-c", create_git_auth_header(token, url=url)]
+
+    cmd += ["ls-remote", url, pattern]
+    stdout, _ = await run_command(*cmd)
+    lines = stdout.decode().splitlines()
+    sha = _pick_commit_sha(lines)
+    if not sha:
+        msg = f"{pattern!r} not found in {url}"
+        raise ValueError(msg)
+
+    return sha
+
+
+def _pick_commit_sha(lines: Iterable[str]) -> str | None:
+    """Return a commit SHA from ``git ls-remote`` output.
+
+    • Annotated tag            →  prefer the peeled line (<sha> refs/tags/x^{})
+    • Branch / lightweight tag →  first non-peeled line
+
+
+    Parameters
+    ----------
+    lines : Iterable[str]
+        The lines of a ``git ls-remote`` output.
+
+    Returns
+    -------
+    str | None
+        The commit SHA, or ``None`` if no commit SHA is found.
+
+    """
+    first_non_peeled: str | None = None
+
+    for ln in lines:
+        if not ln.strip():
+            continue
+
+        sha, ref = ln.split(maxsplit=1)
+
+        if ref.endswith("^{}"):  # peeled commit of annotated tag
+            return sha  # ← best match, done
+
+        if first_non_peeled is None:  # remember the first ordinary line
+            first_non_peeled = sha
+
+    return first_non_peeled  # branch or lightweight tag (or None)

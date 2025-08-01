@@ -66,6 +66,14 @@ You can install it using `pip`:
 pip install gitingest
 ```
 
+or
+
+```bash
+pip install gitingest[server]
+```
+
+to include server dependencies for self-hosting.
+
 However, it might be a good idea to use `pipx` to install it.
 You can install `pipx` using your preferred package manager.
 
@@ -196,6 +204,8 @@ This is because Jupyter notebooks are asynchronous by default.
 
 ## 🐳 Self-host
 
+### Using Docker
+
 1. Build the image:
 
    ``` bash
@@ -231,6 +241,89 @@ The application can be configured using the following environment variables:
 - **GITINGEST_SENTRY_PROFILE_SESSION_SAMPLE_RATE**: Sampling rate for profile sessions (default: "1.0", range: 0.0-1.0)
 - **GITINGEST_SENTRY_PROFILE_LIFECYCLE**: Profile lifecycle mode (default: "trace")
 - **GITINGEST_SENTRY_SEND_DEFAULT_PII**: Send default personally identifiable information (default: "true")
+- **S3_ALIAS_HOST**: Public URL/CDN for accessing S3 resources (default: "127.0.0.1:9000/gitingest-bucket")
+- **S3_DIRECTORY_PREFIX**: Optional prefix for S3 file paths (if set, prefixes all S3 paths with this value)
+
+### Using Docker Compose
+
+The project includes a `compose.yml` file that allows you to easily run the application in both development and production environments.
+
+#### Compose File Structure
+
+The `compose.yml` file uses YAML anchoring with `&app-base` and `<<: *app-base` to define common configuration that is shared between services:
+
+```yaml
+# Common base configuration for all services
+x-app-base: &app-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  ports:
+    - "${APP_WEB_BIND:-8000}:8000"  # Main application port
+    - "${GITINGEST_METRICS_HOST:-127.0.0.1}:${GITINGEST_METRICS_PORT:-9090}:9090"  # Metrics port
+  # ... other common configurations
+```
+
+#### Services
+
+The file defines three services:
+
+1. **app**: Production service configuration
+   - Uses the `prod` profile
+   - Sets the Sentry environment to "production"
+   - Configured for stable operation with `restart: unless-stopped`
+
+2. **app-dev**: Development service configuration
+   - Uses the `dev` profile
+   - Enables debug mode
+   - Mounts the source code for live development
+   - Uses hot reloading for faster development
+
+3. **minio**: S3-compatible object storage for development
+   - Uses the `dev` profile (only available in development mode)
+   - Provides S3-compatible storage for local development
+   - Accessible via:
+     - API: Port 9000 ([localhost:9000](http://localhost:9000))
+     - Web Console: Port 9001 ([localhost:9001](http://localhost:9001))
+   - Default admin credentials:
+     - Username: `minioadmin`
+     - Password: `minioadmin`
+   - Configurable via environment variables:
+     - `MINIO_ROOT_USER`: Custom admin username (default: minioadmin)
+     - `MINIO_ROOT_PASSWORD`: Custom admin password (default: minioadmin)
+   - Includes persistent storage via Docker volume
+   - Auto-creates a bucket and application-specific credentials:
+     - Bucket name: `gitingest-bucket` (configurable via `S3_BUCKET_NAME`)
+     - Access key: `gitingest` (configurable via `S3_ACCESS_KEY`)
+     - Secret key: `gitingest123` (configurable via `S3_SECRET_KEY`)
+   - These credentials are automatically passed to the app-dev service via environment variables:
+     - `S3_ENDPOINT`: URL of the MinIO server
+     - `S3_ACCESS_KEY`: Access key for the S3 bucket
+     - `S3_SECRET_KEY`: Secret key for the S3 bucket
+     - `S3_BUCKET_NAME`: Name of the S3 bucket
+     - `S3_REGION`: Region for the S3 bucket (default: us-east-1)
+     - `S3_ALIAS_HOST`: Public URL/CDN for accessing S3 resources (default: "127.0.0.1:9000/gitingest-bucket")
+
+#### Usage Examples
+
+To run the application in development mode:
+
+```bash
+docker compose --profile dev up
+```
+
+To run the application in production mode:
+
+```bash
+docker compose --profile prod up -d
+```
+
+To build and run the application:
+
+```bash
+docker compose --profile prod build
+docker compose --profile prod up -d
+```
 
 ## 🤝 Contributing
 

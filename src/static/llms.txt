@@ -30,8 +30,11 @@ pip install gitingest
 echo "gitingest" >> requirements.txt
 pip install -r requirements.txt
 
+# For self-hosting: Install with server dependencies
+pip install gitingest[server]
+
 # For development: Install with dev dependencies
-pip install gitingest[dev]
+pip install gitingest[dev,server]
 ```
 
 ### 1.3 Installation Verification

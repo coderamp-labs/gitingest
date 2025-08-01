@@ -7,6 +7,8 @@ to write ``.ipynb`` notebooks for testing notebook utilities.
 from __future__ import annotations
 
 import json
+import sys
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict
 from unittest.mock import AsyncMock
@@ -22,6 +24,26 @@ WriteNotebookFunc = Callable[[str, Dict[str, Any]], Path]
 
 DEMO_URL = "https://github.com/user/repo"
 LOCAL_REPO_PATH = "/tmp/repo"
+DEMO_COMMIT = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+
+def get_ensure_git_installed_call_count() -> int:
+    """Get the number of calls made by ensure_git_installed based on platform.
+
+    On Windows, ensure_git_installed makes 2 calls:
+    1. git --version
+    2. git config core.longpaths
+
+    On other platforms, it makes 1 call:
+    1. git --version
+
+    Returns
+    -------
+    int
+        The number of calls made by ensure_git_installed
+
+    """
+    return 2 if sys.platform == "win32" else 1
 
 
 @pytest.fixture
@@ -41,7 +63,7 @@ def sample_query() -> IngestionQuery:
         repo_name="test_repo",
         local_path=Path("/tmp/test_repo").resolve(),
         slug="test_user/test_repo",
-        id="id",
+        id=uuid.uuid4(),
         branch="main",
         max_file_size=1_000_000,
         ignore_patterns={"*.pyc", "__pycache__", ".git"},
@@ -137,14 +159,37 @@ def write_notebook(tmp_path: Path) -> WriteNotebookFunc:
 
 
 @pytest.fixture
+def stub_resolve_sha(mocker: MockerFixture) -> dict[str, AsyncMock]:
+    """Patch *both* async helpers that hit the network.
+
+    Include this fixture *only* in tests that should stay offline.
+    """
+    head_mock = mocker.patch(
+        "gitingest.utils.query_parser_utils._resolve_ref_to_sha",
+        new_callable=mocker.AsyncMock,
+        return_value=DEMO_COMMIT,
+    )
+    ref_mock = mocker.patch(
+        "gitingest.utils.git_utils._resolve_ref_to_sha",
+        new_callable=mocker.AsyncMock,
+        return_value=DEMO_COMMIT,
+    )
+    # return whichever you want to assert on; here we return the dict
+    return {"head": head_mock, "ref": ref_mock}
+
+
+@pytest.fixture
 def stub_branches(mocker: MockerFixture) -> Callable[[list[str]], None]:
     """Return a function that stubs git branch discovery to *branches*."""
 
     def _factory(branches: list[str]) -> None:
+        stdout = (
+            "\n".join(f"{DEMO_COMMIT[:12]}{i:02d}\trefs/heads/{b}" for i, b in enumerate(branches)).encode() + b"\n"
+        )
         mocker.patch(
             "gitingest.utils.git_utils.run_command",
             new_callable=AsyncMock,
-            return_value=("\n".join(f"refs/heads/{b}" for b in branches).encode() + b"\n", b""),
+            return_value=(stdout, b""),
         )
         mocker.patch(
             "gitingest.utils.git_utils.fetch_remote_branches_or_tags",
@@ -168,11 +213,14 @@ def run_command_mock(mocker: MockerFixture) -> AsyncMock:
     The mocked function returns a dummy process whose ``communicate`` method yields generic
     ``stdout`` / ``stderr`` bytes. Tests can still access / tweak the mock via the fixture argument.
     """
-    mock_exec = mocker.patch("gitingest.clone.run_command", new_callable=AsyncMock)
+    mock = AsyncMock(side_effect=_fake_run_command)
+    mocker.patch("gitingest.utils.git_utils.run_command", mock)
+    mocker.patch("gitingest.clone.run_command", mock)
+    return mock
 
-    # Provide a default dummy process so most tests don't have to create one.
-    dummy_process = AsyncMock()
-    dummy_process.communicate.return_value = (b"output", b"error")
-    mock_exec.return_value = dummy_process
 
-    return mock_exec
+async def _fake_run_command(*args: str) -> tuple[bytes, bytes]:
+    if "ls-remote" in args:
+        # single match: <sha> <tab>refs/heads/main
+        return (f"{DEMO_COMMIT}\trefs/heads/main\n".encode(), b"")
+    return (b"output", b"error")

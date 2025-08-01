@@ -1,18 +1,18 @@
 [project]
 name = "gitingest"
-version = "0.1.5"
+version = "0.3.1"
 description="CLI tool to analyze and create text dumps of codebases for LLMs"
 readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
 dependencies = [
     "click>=8.0.0",
-    "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
     "httpx",
+    "loguru>=0.7.0",
     "pathspec>=0.12.1",
     "pydantic",
     "python-dotenv",
-    "slowapi",
     "starlette>=0.40.0",  # Minimum safe release (https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw)
+    "strenum; python_version < '3.11'",
     "tiktoken>=0.7.0",  # Support for o200k_base encoding
     "typing_extensions>= 4.0.0; python_version < '3.10'",
     "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
@@ -45,6 +45,15 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "pytest-mock",
+]
+
+server = [
+    "boto3>=1.28.0",  # AWS SDK for S3 support
+    "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
+    "prometheus-client",
+    "sentry-sdk[fastapi]",
+    "slowapi",
+    "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
 ]
 
 [project.scripts]
@@ -91,7 +100,6 @@ ignore = [  # https://docs.astral.sh/ruff/rules/...
 
     # TODO: fix the following issues:
     "TD003", # missing-todo-link, TODO: add issue links
-    "T201", # print, TODO: replace with logging
     "S108", # hardcoded-temp-file, TODO: replace with tempfile
     "BLE001", # blind-except, TODO: replace with specific exceptions
     "FAST003", # fast-api-unused-path-parameter, TODO: fix
