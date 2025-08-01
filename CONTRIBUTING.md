@@ -95,3 +95,17 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
 13. **Iterate** on any review feedback—update your branch and repeat **6 – 11** as needed.
 
 *(Optional) Invite a maintainer to your branch for easier collaboration.*
+
+---
+
+## CSS & build artefacts
+
+- **Do not commit `src/static/css/site.css`.** The CI pipeline runs `npm run build:css` during the container/image build, so the artefact is produced automatically.
+
+    *(Optional) Invite project maintainer to your branch for easier collaboration.*
+
+- When developing locally you may run the build yourself (see step 9) so you can preview the styles.
+
+## Dependency Management
+
+When you add a new import from an external package, make sure to add it to both `requirements.txt` and `pyproject.toml` (if applicable). This ensures all environments and CI/CD pipelines have the correct dependencies installed.

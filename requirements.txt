@@ -12,3 +12,4 @@ slowapi
 starlette>=0.40.0  # Vulnerable to https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw
 tiktoken>=0.7.0  # Support for o200k_base encoding
 uvicorn>=0.11.7  # Vulnerable to https://osv.dev/vulnerability/PYSEC-2020-150
+autotiktokenizer
