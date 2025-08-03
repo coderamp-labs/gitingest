@@ -11,7 +11,7 @@ import requests.exceptions
 import tiktoken
 from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
 
-from gitingest.schemas import ContextV1, FileSystemNode, Source
+from gitingest.schemas import FileSystemNode, Source
 from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
 from gitingest.utils.logging_config import get_logger
@@ -136,15 +136,15 @@ def _format_token_count(text: str) -> str | None:
     return str(total_tokens)
 
 
-def generate_digest(context: ContextV1) -> str:
-    """Generate a digest string from a ContextV1 object.
+def generate_digest(context: Source) -> str:
+    """Generate a digest string from a Source object.
 
-    This is a convenience function that uses the DefaultFormatter to format a ContextV1.
+    This is a convenience function that uses the DefaultFormatter to format a Source.
 
     Parameters
     ----------
-    context : ContextV1
-        The ContextV1 object containing sources and query information.
+    context : Source
+        The Source object containing sources and query information.
 
     Returns
     -------
@@ -156,12 +156,12 @@ def generate_digest(context: ContextV1) -> str:
     return formatter.format(context, context.query)
 
 
-class DefaultFormatter:
-    """Default formatter for rendering filesystem nodes using Jinja2 templates."""
+class Formatter:
+    """Base formatter class."""
 
-    def __init__(self) -> None:
+    def __init__(self, template_subdir: str) -> None:
         self.separator = SEPARATOR
-        template_dir = Path(__file__).parent / "format" / "DefaultFormatter"
+        template_dir = Path(__file__).parent / "format" / template_subdir
         self.env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
 
     def _get_template_for_node(self, node: Source) -> Template:
@@ -169,23 +169,72 @@ class DefaultFormatter:
         template_name = f"{node.__class__.__name__}.j2"
         return self.env.get_template(template_name)
 
+
+class DefaultFormatter(Formatter):
+    """Default formatter for rendering filesystem nodes using Jinja2 templates."""
+
+    def __init__(self) -> None:
+        super().__init__("DefaultFormatter")
+
+    def format(self, source: Source, query: IngestionQuery) -> str:
+        """Format a source with the given query."""
+        if query is None:
+            # Handle case where query is None (shouldn't happen in normal usage)
+            raise ValueError("ContextV1 must have a valid query object")
+        
+        # Calculate and set token count for ContextV1
+        if hasattr(source, '_token_count'):
+            token_count = self._calculate_token_count(source)
+            source._token_count = token_count
+            # Also set token count in the extra dict
+            source.extra["token_count"] = token_count
+        
+        try:
+            return self._format_node(source, query)
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logging.error(f"Error in DefaultFormatter: {e}")
+            raise
+
+    def _calculate_token_count(self, source: Source) -> str:
+        """Calculate token count for the entire source."""
+        # Gather all content from the source
+        content = self._gather_all_content(source)
+        return _format_token_count(content) or "Unknown"
+
+    def _gather_all_content(self, node: Source) -> str:
+        """Recursively gather all content from the source tree."""
+        content_parts = []
+        
+        # Add content from the current node
+        if hasattr(node, 'content'):
+            content_parts.append(node.content)
+        
+        # Add content from all sources if it's a ContextV1
+        if hasattr(node, 'sources'):
+            for source in node.sources:
+                content_parts.append(self._gather_all_content(source))
+        
+        # Add content from children if it's a directory
+        if hasattr(node, 'children'):
+            for child in node.children:
+                content_parts.append(self._gather_all_content(child))
+        
+        return "\n".join(filter(None, content_parts))
+
     @singledispatchmethod
-    def format(self, node: Source, query: IngestionQuery) -> str:
+    def _format_node(self, node: Source, query: IngestionQuery) -> str:
         """Dynamically format any node type based on available templates."""
         try:
             template = self._get_template_for_node(node)
             # Provide common template variables
             context_vars = {
-                "node": node,
+                "source": node,
                 "query": query,
                 "formatter": self,
                 "SEPARATOR": SEPARATOR,
             }
-            # Special handling for ContextV1 objects
-            if isinstance(node, ContextV1):
-                context_vars["context"] = node
-                # Use ContextV1 for backward compatibility
-                template = self.env.get_template("ContextV1.j2")
 
             return template.render(**context_vars)
         except TemplateNotFound:
@@ -193,20 +242,17 @@ class DefaultFormatter:
             return f"{getattr(node, 'content', '')}"
 
 
-class DebugFormatter:
+class DebugFormatter(Formatter):
     """Debug formatter that shows detailed information about filesystem nodes."""
 
     def __init__(self) -> None:
-        self.separator = SEPARATOR
-        template_dir = Path(__file__).parent / "format" / "DebugFormatter"
-        self.env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+        super().__init__("DebugFormatter")
 
     def _get_template_for_node(self, node: Source) -> Template:
         """Get template based on node class name."""
         template_name = f"{node.__class__.__name__}.j2"
         return self.env.get_template(template_name)
 
-    @singledispatchmethod
     def format(self, node: Source, query: IngestionQuery) -> str:
         """Dynamically format any node type with debug information."""
         try:
@@ -254,17 +300,18 @@ class DebugFormatter:
             return f"DEBUG: {node.__class__.__name__}"
 
 
-class SummaryFormatter:
+class SummaryFormatter(Formatter):
     """Dedicated formatter for generating summaries of filesystem nodes."""
 
     def __init__(self) -> None:
-        template_dir = Path(__file__).parent / "format" / "SummaryFormatter"
-        self.env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+        super().__init__("SummaryFormatter")
 
-    def _get_template_for_node(self, node: Source) -> Template:
-        """Get template based on node class name."""
-        template_name = f"{node.__class__.__name__}.j2"
-        return self.env.get_template(template_name)
+    def format(self, source: Source, query: IngestionQuery) -> str:
+        """Generate the summary output."""
+        if query is None:
+            # Handle case where query is None (shouldn't happen in normal usage)
+            raise ValueError("ContextV1 must have a valid query object")
+        return self.summary(source, query)
 
     @singledispatchmethod
     def summary(self, node: Source, query: IngestionQuery) -> str:
@@ -272,19 +319,12 @@ class SummaryFormatter:
         try:
             # Provide common template variables
             context_vars = {
-                "node": node,
+                "source": node,
                 "query": query,
                 "formatter": self,
             }
 
-            # Special handling for ContextV1 objects
-            if isinstance(node, ContextV1):
-                context_vars["context"] = node
-                # Use ContextV1 for backward compatibility
-                template = self.env.get_template("ContextV1.j2")
-            else:
-                template = self._get_template_for_node(node)
-
+            template = self._get_template_for_node(node)
             return template.render(**context_vars)
         except TemplateNotFound:
             # Fallback: return name if available

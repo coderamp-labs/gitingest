@@ -1,7 +1,7 @@
-{%- if node.depth == 0 %}{{ node.name }}:
-{{ node.tree }}
+{%- if source.depth == 0 %}{{ source.name }}:
+{{ source.tree }}
 
 {% endif -%}
-{%- for child in node.children -%}
+{%- for child in source.children -%}
 {{ formatter.format(child, query) }}
 {%- endfor -%}

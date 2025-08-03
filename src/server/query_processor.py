@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
-from gitingest.output_formatter import DefaultFormatter, SummaryFormatter, generate_digest
+from gitingest.output_formatter import DefaultFormatter, SummaryFormatter
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
@@ -303,8 +303,10 @@ async def process_query(
 
     try:
         context = ingest_query(query)
-        digest = DefaultFormatter().format(context, query)
-        summary = SummaryFormatter().summary(context, query)
+        formatter = DefaultFormatter()
+        digest = formatter.format(context, context.query)
+        summary_formatter = SummaryFormatter()
+        summary = summary_formatter.format(context, context.query)
 
         # Store digest based on S3 configuration
         if is_s3_enabled():
@@ -318,7 +320,9 @@ async def process_query(
                 include_patterns=query.include_patterns,
                 ignore_patterns=query.ignore_patterns,
             )
-            s3_url = upload_to_s3(content=generate_digest(context), s3_file_path=s3_file_path, ingest_id=query.id)
+            s3_url = upload_to_s3(
+                content=formatter.format(context, context.query), s3_file_path=s3_file_path, ingest_id=query.id
+            )
             # Store S3 URL in query for later use
             query.s3_url = s3_url
         else:

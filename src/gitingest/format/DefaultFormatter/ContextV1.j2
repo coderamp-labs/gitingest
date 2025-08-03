@@ -1,11 +1,11 @@
-# Generated using https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}{{ context.query.subpath }}
+# Generated using https://gitingest.com/{{ source.query.user_name }}/{{ source.query.repo_name }}{{ source.query.subpath }}
 
 Sources used:
-{%- for source in context %}
-- {{ source.name }}: {{ source.__class__.__name__ }}
+{%- for src in source %}
+- {{ src.name }}: {{ src.__class__.__name__ }}
 {% endfor %}
 
-{%- for source in context.sources %}
-{{ formatter.format(source, context.query) }}
+{%- for src in source.sources %}
+{{ formatter.format(src, source.query) }}
 {%- endfor %}
-# End of https://gitingest.com/{{ context.query.user_name }}/{{ context.query.repo_name }}{{ context.query.subpath }}
+# End of https://gitingest.com/{{ source.query.user_name }}/{{ source.query.repo_name }}{{ source.query.subpath }}

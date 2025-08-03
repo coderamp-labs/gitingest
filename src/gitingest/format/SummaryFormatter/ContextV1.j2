@@ -1,3 +1,5 @@
-Repository: {{ context.query.user_name }}/{{ context.query.repo_name }}
-Commit: {{ context.query.commit }}
-Files analyzed: {{ context.file_count }}
+Repository: {{ source.query.user_name }}/{{ source.query.repo_name }}
+Commit: {{ source.query.commit }}
+Files analyzed: {{ source.file_count }}
+
+Estimated tokens: {{ source.token_count }}

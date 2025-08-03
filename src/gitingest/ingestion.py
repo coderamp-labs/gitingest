@@ -40,7 +40,7 @@ def ingest_query(query: IngestionQuery) -> ContextV1:
     -------
     ContextV1
         A ContextV1 object representing the ingested file system nodes.
-        Use generate_digest(context) to get the summary, directory structure,
+        Use str(DefaultFormatter(context)) to get the summary, directory structure,
         and file contents.
 
     Raises
@@ -96,7 +96,7 @@ def ingest_query(query: IngestionQuery) -> ContextV1:
                 "file_size": file_node.size,
             },
         )
-        return ContextV1([file_node], query)
+        return ContextV1(sources=[file_node], query=query)
 
     # Check if this is a git repository and create appropriate node type
     if _is_git_repository(path):
@@ -127,7 +127,7 @@ def ingest_query(query: IngestionQuery) -> ContextV1:
         },
     )
 
-    return ContextV1([root_node], query)
+    return ContextV1(sources=[root_node], query=query)
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:  # noqa: C901

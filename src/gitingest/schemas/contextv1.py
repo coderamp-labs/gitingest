@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from gitingest.schemas.filesystem import FileSystemDirectory, FileSystemNode, Source
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class ContextV1:
+class ContextV1(Source):
     """The ContextV1 object is an object that contains all information needed to produce a formatted output.
 
     This object contains all information needed to produce a formatted output
@@ -27,8 +28,19 @@ class ContextV1:
 
     """
 
-    sources: list[Source]
-    query: IngestionQuery
+    sources: list[Source] = field(default_factory=list)
+    query: IngestionQuery = field(default=None)
+
+    # Source fields
+    name: str = "context"
+    path_str: str = ""
+    path: Path = Path()
+    _token_count: str = ""
+
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this source."""
+        # Return a simple tree representation for ContextV1
+        return [f"{prefix}ContextV1: {len(self.sources)} sources"]
 
     @property
     def sources_by_type(self) -> dict[str, list[Source]]:

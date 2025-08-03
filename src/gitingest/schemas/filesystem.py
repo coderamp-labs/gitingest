@@ -34,6 +34,9 @@ class FileSystemStats:
 class Source(ABC):
     """Abstract base class for all sources (files, directories, etc)."""
 
+    metadata: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)
+
     @abstractmethod
     def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
         """Render the tree representation of this source."""
@@ -43,9 +46,9 @@ class Source(ABC):
 class FileSystemNode(Source):
     """Base class for filesystem nodes (files, directories, symlinks)."""
 
-    name: str
-    path_str: str
-    path: Path
+    name: str = ""
+    path_str: str = ""
+    path: Path = None  # type: ignore
     depth: int = 0
     size: int = 0
 
