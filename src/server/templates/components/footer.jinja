@@ -1,7 +1,7 @@
 {% from 'components/_macros.jinja' import footer_icon_link %}
 <footer class="w-full border-t-[3px] border-gray-900 mt-auto">
     <div class="max-w-4xl mx-auto px-4 py-4">
-        <div class="grid grid-cols-2 items-center text-gray-900 text-sm">
+        <div class="grid grid-cols-3 items-center text-gray-900 text-sm">
             {# Left column — Chrome + PyPI #}
             <div class="flex items-center space-x-4">
                 {{ footer_icon_link('https://chromewebstore.google.com/detail/adfjahbijlkjfoicpjkhjicpjpjfaood',
@@ -10,6 +10,18 @@
                 {{ footer_icon_link('https://pypi.org/project/gitingest',
                                 'icons/python.svg',
                                 'Python Package') }}
+            </div>
+            {# Middle column - Version information #}
+            <div class="flex justify-center">
+                <span>Version:&nbsp;</span>
+                {% if version != "unknown" %}
+                    <a href="{{ version_link }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="text-blue-600 hover:text-blue-800 underline">{{ version }}</a>
+                {% else %}
+                    <span>{{ version }}</span>
+                {% endif %}
             </div>
             {# Right column - Discord #}
             <div class="flex justify-end">

@@ -3,19 +3,11 @@
         <div class="flex justify-between items-center h-16">
             {# Logo #}
             <div class="flex items-center gap-4">
-                <div class="flex flex-col">
-                    <h1 class="text-3xl font-bold tracking-tight mb-0 leading-none">
-                        <a href="/" class="hover:opacity-80 transition-opacity">
-                            <span class="text-gray-900">Git</span><span class="text-[#FE4A60]">ingest</span>
-                        </a>
-                    </h1>
-                    <a href="{{ version_link }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="relative self-end text-sm text-blue-600 hover:text-blue-800 no-underline ml-4 -mt-1">
-                        {{ version }}
+                <h1 class="text-2xl font-bold tracking-tight">
+                    <a href="/" class="hover:opacity-80 transition-opacity">
+                        <span class="text-gray-900">Git</span><span class="text-[#FE4A60]">ingest</span>
                     </a>
-                </div>
+                </h1>
             </div>
             {# Navigation with updated styling #}
             <nav class="flex items-center space-x-6">
@@ -44,4 +36,5 @@
         </div>
     </div>
 </header>
+{# Load GitHub stars script #}
 <script defer src="/static/js/navbar.js"></script>
