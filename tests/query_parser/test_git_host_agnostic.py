@@ -14,7 +14,7 @@ from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS, _is_valid_git_co
 
 # Repository matrix: (host, user, repo)
 _REPOS: list[tuple[str, str, str]] = [
-    ("github.com", "tiangolo", "fastapi"),
+    ("github.com", "fastapi", "fastapi"),
     ("gitlab.com", "gitlab-org", "gitlab-runner"),
     ("bitbucket.org", "na-dna", "llm-knowledge-share"),
     ("gitea.com", "xorm", "xorm"),

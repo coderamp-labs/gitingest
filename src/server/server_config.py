@@ -14,7 +14,7 @@ MAX_FILE_SIZE_KB: int = 100 * 1024  # 100 mb
 
 EXAMPLE_REPOS: list[dict[str, str]] = [
     {"name": "Gitingest", "url": "https://github.com/coderamp-labs/gitingest"},
-    {"name": "FastAPI", "url": "https://github.com/tiangolo/fastapi"},
+    {"name": "FastAPI", "url": "https://github.com/fastapi/fastapi"},
     {"name": "Flask", "url": "https://github.com/pallets/flask"},
     {"name": "Excalidraw", "url": "https://github.com/excalidraw/excalidraw"},
     {"name": "ApiAnalytics", "url": "https://github.com/tom-draper/api-analytics"},
