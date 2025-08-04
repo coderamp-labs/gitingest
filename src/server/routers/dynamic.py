@@ -33,6 +33,8 @@ async def catch_all(request: Request, full_path: str) -> HTMLResponse:
         "request": request,
         "repo_url": full_path,
         "default_max_file_size": 243,
+        "context_size": "128k",  # Default context size
+        "user_prompt": "",       # Default empty prompt
     }
     context.update(get_version_info())
 

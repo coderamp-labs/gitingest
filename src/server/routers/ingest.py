@@ -11,7 +11,6 @@ from gitingest.config import TMP_BASE_PATH
 from server.models import IngestRequest
 from server.routers_utils import COMMON_INGEST_RESPONSES, _perform_ingestion
 from server.s3_utils import is_s3_enabled
-from server.server_config import DEFAULT_FILE_SIZE_KB
 from server.server_utils import limiter
 
 ingest_counter = Counter("gitingest_ingest_total", "Number of ingests", ["status", "url"])
@@ -42,9 +41,8 @@ async def api_ingest(
     """
     response = await _perform_ingestion(
         input_text=ingest_request.input_text,
-        max_file_size=ingest_request.max_file_size,
-        pattern_type=ingest_request.pattern_type.value,
-        pattern=ingest_request.pattern,
+        context_size=ingest_request.context_size,
+        user_prompt=ingest_request.user_prompt,
         token=ingest_request.token,
     )
     # limit URL to 255 characters
@@ -58,9 +56,8 @@ async def api_ingest_get(
     request: Request,  # noqa: ARG001 (unused-function-argument) # pylint: disable=unused-argument
     user: str,
     repository: str,
-    max_file_size: int = DEFAULT_FILE_SIZE_KB,
-    pattern_type: str = "exclude",
-    pattern: str = "",
+    context_size: str = "128k",
+    user_prompt: str = "",
     token: str = "",
 ) -> JSONResponse:
     """Ingest a GitHub repository via GET and return processed content.
@@ -74,9 +71,8 @@ async def api_ingest_get(
     - **repository** (`str`): GitHub repository name
 
     **Query Parameters**
-    - **max_file_size** (`int`, optional): Maximum file size in KB to include in the digest (default: 5120 KB)
-    - **pattern_type** (`str`, optional): Type of pattern to use ("include" or "exclude", default: "exclude")
-    - **pattern** (`str`, optional): Pattern to include or exclude in the query (default: "")
+    - **context_size** (`str`, optional): Desired context size ("32k", "128k", "512k", "1M", default: "128k")
+    - **user_prompt** (`str`, optional): User prompt to guide AI file selection (default: "")
     - **token** (`str`, optional): GitHub personal access token for private repositories (default: "")
 
     **Returns**
@@ -84,9 +80,8 @@ async def api_ingest_get(
     """
     response = await _perform_ingestion(
         input_text=f"{user}/{repository}",
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
+        context_size=context_size,
+        user_prompt=user_prompt,
         token=token or None,
     )
     # limit URL to 255 characters

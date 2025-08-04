@@ -31,6 +31,8 @@ async def home(request: Request) -> HTMLResponse:
         "request": request,
         "examples": EXAMPLE_REPOS,
         "default_max_file_size": 243,
+        "context_size": "128k",  # Default context size
+        "user_prompt": "",       # Default empty prompt
     }
     context.update(get_version_info())
 

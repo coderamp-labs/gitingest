@@ -3,17 +3,18 @@ name = "gitingest"
 version = "0.3.1"
 description="CLI tool to analyze and create text dumps of codebases for LLMs"
 readme = {file = "README.md", content-type = "text/markdown" }
-requires-python = ">= 3.8"
+requires-python = ">= 3.9"
 dependencies = [
     "click>=8.0.0",
+    "google-generativeai>=0.8.5",
     "httpx",
     "loguru>=0.7.0",
     "pathspec>=0.12.1",
     "pydantic",
     "python-dotenv",
-    "starlette>=0.40.0",  # Minimum safe release (https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw)
+    "starlette>=0.40.0", # Minimum safe release (https://osv.dev/vulnerability/GHSA-f96h-pmfr-66vw)
     "strenum; python_version < '3.11'",
-    "tiktoken>=0.7.0",  # Support for o200k_base encoding
+    "tiktoken>=0.7.0", # Support for o200k_base encoding
     "typing_extensions>= 4.0.0; python_version < '3.10'",
 ]
 
@@ -47,6 +48,7 @@ dev = [
 server = [
     "boto3>=1.28.0",  # AWS SDK for S3 support
     "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
+    "google-generativeai>=0.8.0",  # Google Gemini API
     "prometheus-client",
     "sentry-sdk[fastapi]",
     "slowapi",

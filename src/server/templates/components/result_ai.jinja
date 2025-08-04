@@ -1,0 +1,203 @@
+<div class="mt-10">
+    <!-- Error Message (hidden by default) -->
+    <div id="results-error" style="display:none"></div>
+    
+    <!-- Loading Spinner (hidden by default) -->
+    <div id="results-loading" style="display:none">
+        <div class="relative mt-10">
+            <div class="w-full h-full absolute inset-0 bg-black rounded-xl translate-y-2 translate-x-2"></div>
+            <div class="bg-[#fafafa] rounded-xl border-[3px] border-gray-900 p-6 relative z-20 flex flex-col items-center space-y-4">
+                <div class="loader border-8 border-[#fff4da] border-t-8 border-t-[#ffc480] rounded-full w-16 h-16 animate-spin"></div>
+                <p class="text-lg font-bold text-gray-900">Analyzing your repository...</p>
+                <p class="text-sm text-gray-600 text-center max-w-md">
+                    Examining the codebase structure and selecting the most relevant files based on your requirements.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Section (hidden by default) -->
+    <div id="results-section" style="display:none">
+        <div class="relative">
+            <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
+            <div class="bg-[#fafafa] rounded-xl border-[3px] border-gray-900 p-6 relative z-20 space-y-6">
+                
+                <!-- Selection Info (new section) -->
+                <div id="ai-selection-info" class="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg" style="display:none">
+                    <div class="flex items-center space-x-2 mb-3">
+                        <span class="text-blue-600 text-xl">🎯</span>
+                        <h3 class="font-bold text-blue-800">Smart File Selection</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <strong class="text-blue-800">Selected Files:</strong>
+                            <span id="selected-files-count" class="text-blue-700">-</span>
+                        </div>
+                        <div>
+                            <strong class="text-blue-800">Context Size:</strong>
+                            <span id="context-size-used" class="text-blue-700">-</span>
+                        </div>
+                        <div>
+                            <strong class="text-blue-800">Reasoning:</strong>
+                            <span id="ai-reasoning" class="text-blue-700">-</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Selected Files List (collapsible) -->
+                    <div class="mt-3">
+                        <button onclick="toggleSelectedFiles()" 
+                                class="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center space-x-1">
+                            <span>View Selected Files</span>
+                            <svg id="selected-files-arrow" class="w-4 h-4 transition-transform" 
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                        <div id="selected-files-list" class="hidden mt-2 p-3 bg-white border border-blue-200 rounded text-xs font-mono max-h-40 overflow-y-auto">
+                            <!-- Files will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                    <div class="md:col-span-5">
+                        <div class="flex justify-between items-center mb-4 py-2">
+                            <h3 class="text-lg font-bold text-gray-900">Summary</h3>
+                        </div>
+                        <div class="relative">
+                            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                            <textarea id="result-summary"
+                                      class="w-full h-[160px] p-4 bg-[#fff4da] border-[3px] border-gray-900 rounded font-mono text-sm resize-none focus:outline-none relative z-10"
+                                      readonly></textarea>
+                        </div>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <div class="relative inline-block group">
+                                <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                                <button onclick="copyFullDigest()"
+                                        class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+                                    <svg class="w-4 h-4 mr-2"
+                                         fill="none"
+                                         stroke="currentColor"
+                                         viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                    Copy all
+                                </button>
+                            </div>
+                            <div class="relative inline-block group">
+                                <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                                <button onclick="downloadFullDigest()"
+                                        class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+                                    <svg class="w-4 h-4 mr-2"
+                                         fill="none"
+                                         stroke="currentColor"
+                                         viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Download
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:col-span-7">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-900">Directory Structure</h3>
+                            <div class="relative group">
+                                <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                                <button onclick="copyText('directory-structure')"
+                                        class="px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10 flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                            <div class="directory-structure w-full p-4 bg-[#fff4da] border-[3px] border-gray-900 rounded font-mono text-sm resize-y focus:outline-none relative z-10 h-[215px] overflow-auto"
+                                 id="directory-structure-container"
+                                 readonly>
+                                <input type="hidden" id="directory-structure-content" value="" />
+                                <pre id="directory-structure-pre"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-gray-900">Files Content</h3>
+                        <div class="flex items-center space-x-2">
+                            <span id="ai-badge" class="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full border border-green-200" style="display:none">
+                                ✨ Smart Selected
+                            </span>
+                            <div class="relative group">
+                                <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                                <button onclick="copyText('result-text')"
+                                        class="px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10 flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                        <textarea id="result-content"
+                                  class="result-text w-full p-4 bg-[#fff4da] border-[3px] border-gray-900 rounded font-mono text-sm resize-y focus:outline-none relative z-10"
+                                  style="min-height: 600px"
+                                  readonly></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSelectedFiles() {
+    const filesList = document.getElementById('selected-files-list');
+    const arrow = document.getElementById('selected-files-arrow');
+    
+    if (filesList.classList.contains('hidden')) {
+        filesList.classList.remove('hidden');
+        arrow.style.transform = 'rotate(90deg)';
+    } else {
+        filesList.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+    }
+}
+
+function updateAIInfo(result) {
+    const aiInfo = document.getElementById('ai-selection-info');
+    const aiFilesCount = document.getElementById('selected-files-count');
+    const contextSize = document.getElementById('context-size-used');
+    const aiReasoning = document.getElementById('ai-reasoning');
+    const selectedFilesList = document.getElementById('selected-files-list');
+    const aiBadge = document.getElementById('ai-badge');
+    
+    if (result.selected_files && result.selected_files.length > 0) {
+        aiInfo.style.display = 'block';
+        aiBadge.style.display = 'inline-block';
+        
+        aiFilesCount.textContent = result.selected_files.length;
+        contextSize.textContent = result.context_size || 'Unknown';
+        
+        // Truncate reasoning if too long
+        const reasoning = result.reasoning || 'AI selected the most relevant files';
+        aiReasoning.textContent = reasoning.length > 100 ? 
+            reasoning.substring(0, 100) + '...' : reasoning;
+        
+        // Populate files list
+        selectedFilesList.innerHTML = result.selected_files
+            .map(file => `<div class="py-1">${file}</div>`)
+            .join('');
+    }
+}
+
+// Make function available globally
+window.updateAIInfo = updateAIInfo;
+window.toggleSelectedFiles = toggleSelectedFiles;
+</script>

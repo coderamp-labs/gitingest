@@ -29,21 +29,18 @@ class IngestRequest(BaseModel):
     ----------
     input_text : str
         The Git repository URL or slug to ingest.
-    max_file_size : int
-        Maximum file size slider position (0-500) for filtering files.
-    pattern_type : PatternType
-        Type of pattern to use for file filtering (include or exclude).
-    pattern : str
-        Glob/regex pattern string for file filtering.
+    context_size : str
+        Desired output size in tokens for the final digest (e.g., "128k", "1M", "500k").
+    user_prompt : str
+        User prompt to guide AI file selection (optional, uses default if empty).
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
 
     """
 
     input_text: str = Field(..., description="Git repository URL or slug to ingest")
-    max_file_size: int = Field(..., ge=1, le=MAX_FILE_SIZE_KB, description="File size in KB")
-    pattern_type: PatternType = Field(default=PatternType.EXCLUDE, description="Pattern type for file filtering")
-    pattern: str = Field(default="", description="Glob/regex pattern for file filtering")
+    context_size: str = Field(default="128k", description="Desired output size in tokens (e.g., '128k', '1M', '500k')")
+    user_prompt: str = Field(default="", description="User prompt to guide AI file selection")
     token: str | None = Field(default=None, description="GitHub PAT for private repositories")
 
     @field_validator("input_text")
@@ -55,10 +52,10 @@ class IngestRequest(BaseModel):
             raise ValueError(err)
         return removesuffix(v.strip(), ".git")
 
-    @field_validator("pattern")
+    @field_validator("user_prompt")
     @classmethod
-    def validate_pattern(cls, v: str) -> str:
-        """Validate ``pattern`` field."""
+    def validate_user_prompt(cls, v: str) -> str:
+        """Validate ``user_prompt`` field."""
         return v.strip()
 
 
@@ -79,12 +76,12 @@ class IngestSuccessResponse(BaseModel):
         File tree structure of the repository.
     content : str
         Processed content from the repository files.
-    default_max_file_size : int
-        The file size slider position used.
-    pattern_type : str
-        The pattern type used for filtering.
-    pattern : str
-        The pattern used for filtering.
+    context_size : str
+        The context size used for the digest.
+    user_prompt : str
+        The user prompt used for AI file selection.
+    selected_files : list[str]
+        List of file paths selected by AI for inclusion.
 
     """
 
@@ -94,9 +91,9 @@ class IngestSuccessResponse(BaseModel):
     digest_url: str = Field(..., description="URL to download the full digest content")
     tree: str = Field(..., description="File tree structure")
     content: str = Field(..., description="Processed file content")
-    default_max_file_size: int = Field(..., description="File size slider position used")
-    pattern_type: str = Field(..., description="Pattern type used")
-    pattern: str = Field(..., description="Pattern used")
+    context_size: str = Field(..., description="Context size used")
+    user_prompt: str = Field(..., description="User prompt used")
+    selected_files: list[str] = Field(..., description="AI-selected file paths")
 
 
 class IngestErrorResponse(BaseModel):
@@ -142,30 +139,26 @@ class QueryForm(BaseModel):
     ----------
     input_text : str
         Text or URL supplied in the form.
-    max_file_size : int
-        The maximum allowed file size for the input, specified by the user.
-    pattern_type : str
-        The type of pattern used for the query (``include`` or ``exclude``).
-    pattern : str
-        Glob/regex pattern string.
+    context_size : str
+        The desired context size for the output.
+    user_prompt : str
+        User prompt to guide AI file selection.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
 
     """
 
     input_text: str
-    max_file_size: int
-    pattern_type: str
-    pattern: str
+    context_size: str
+    user_prompt: str
     token: str | None = None
 
     @classmethod
     def as_form(
         cls,
         input_text: StrForm,
-        max_file_size: IntForm,
-        pattern_type: StrForm,
-        pattern: StrForm,
+        context_size: StrForm,
+        user_prompt: StrForm,
         token: OptStrForm,
     ) -> QueryForm:
         """Create a QueryForm from FastAPI form parameters.
@@ -174,12 +167,10 @@ class QueryForm(BaseModel):
         ----------
         input_text : StrForm
             The input text provided by the user.
-        max_file_size : IntForm
-            The maximum allowed file size for the input.
-        pattern_type : StrForm
-            The type of pattern used for the query (``include`` or ``exclude``).
-        pattern : StrForm
-            Glob/regex pattern string.
+        context_size : StrForm
+            The desired context size for the output.
+        user_prompt : StrForm
+            User prompt to guide AI file selection.
         token : OptStrForm
             GitHub personal access token (PAT) for accessing private repositories.
 
@@ -191,8 +182,7 @@ class QueryForm(BaseModel):
         """
         return cls(
             input_text=input_text,
-            max_file_size=max_file_size,
-            pattern_type=pattern_type,
-            pattern=pattern,
+            context_size=context_size,
+            user_prompt=user_prompt,
             token=token,
         )
