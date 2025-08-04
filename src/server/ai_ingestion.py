@@ -98,9 +98,14 @@ async def ai_ingest_query(
     # Generate digest using existing mechanism
     logger.info("Generating digest with AI-selected files")
     
-    # Create filtered query with selected files
-    filtered_query = _create_filtered_query(query, selected_files)
-    final_summary, final_tree, final_content = ingest_query(filtered_query)
+    # Parse context size to tokens for optimization
+    context_tokens = _parse_context_size_to_tokens(context_size)
+    
+    # Use context-aware formatting instead of regular ingestion
+    from gitingest.output_formatter import format_node_with_context_limit
+    final_summary, final_tree, final_content = format_node_with_context_limit(
+        root_node, query, context_tokens
+    )
     final_selected_files = selected_files
     
     # Update summary with AI selection info
