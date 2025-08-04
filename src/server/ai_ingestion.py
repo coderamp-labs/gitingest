@@ -11,6 +11,7 @@ import tiktoken
 from gitingest.ingestion import ingest_query
 from gitingest.output_formatter import format_node
 from gitingest.schemas import FileSystemNode, FileSystemNodeType
+from gitingest.utils.compat_func import readlink
 from gitingest.utils.logging_config import get_logger
 from server.ai_file_selector import get_ai_file_selector
 
@@ -29,75 +30,78 @@ class AIIngestResult:
         summary: str,
         tree: str,
         content: str,
-        selected_files: list[str],
+        selected_files: list[str],  # List of selected file paths
+        selected_files_detailed: dict[str, dict] | None,  # Detailed info with reasoning
         reasoning: str,
     ):
         self.summary = summary
         self.tree = tree
         self.content = content
         self.selected_files = selected_files
+        self.selected_files_detailed = selected_files_detailed
         self.reasoning = reasoning
 
 
 async def ai_ingest_query(
+    root_node: FileSystemNode,
     query: IngestionQuery,
     user_prompt: str,
     context_size: str,
+    initial_content: str,
 ) -> AIIngestResult:
-    """Run AI-powered ingestion with intelligent file selection.
+    """Apply AI scoring to an existing file tree and generate digest.
     
-    This implements the new flow:
-    1. Run initial ingest to get file tree and content
-    2. Use AI to select optimal files based on user prompt
-    3. Re-run ingest with only selected files
-    4. Crop to context window if needed
+    Takes an existing file tree and applies AI likelihood scores to it,
+    then generates a digest using the existing mechanism.
     """
     
-    logger.info("Starting AI-powered ingestion", extra={
+    logger.info("Starting AI-powered file scoring", extra={
         "slug": query.slug,
         "user_prompt": user_prompt[:100] + "..." if len(user_prompt) > 100 else user_prompt,
         "context_size": context_size,
     })
     
-    # Step 1: Run initial ingest to build full file tree and get sample content
-    logger.info("Step 1: Running initial ingest for file discovery")
-    initial_summary, initial_tree, initial_content = ingest_query(query)
-    
-    # Get root node for AI analysis
-    root_node = _build_file_system_node(query)
-    
-    # Step 2: Use AI to select files (if AI is available)
+    # Apply AI scoring to the existing tree
     ai_selector = get_ai_file_selector()
+    selected_files_detailed = None
+    selected_files = []
     if ai_selector:
-        logger.info("Step 2: Using AI for intelligent file selection")
+        logger.info("Calling Gemini for file scoring")
         try:
-            selection = await ai_selector.select_files(
+            ai_response = await ai_selector.select_files(
                 root_node=root_node,
                 user_prompt=user_prompt,
                 context_size=context_size,
                 initial_content=initial_content,
             )
-            selected_files = selection.selected_files
-            reasoning = selection.reasoning
-            
-            logger.info("AI file selection completed", extra={
-                "selected_files_count": len(selected_files),
-            })
+            reasoning = ai_response.reasoning
+            selected_files_detailed = ai_response.selected_files_detailed
+            selected_files = ai_response.selected_files
             
         except Exception as e:
-            logger.warning("AI file selection failed, using fallback", extra={"error": str(e)})
-            selected_files = _fallback_file_selection(root_node, context_size)
-            reasoning = f"AI selection failed ({str(e)}), used fallback heuristics"
+            logger.warning("AI file scoring failed, using fallback", extra={"error": str(e)})
+            _set_fallback_scores(root_node)
+            reasoning = f"AI scoring failed ({str(e)}), used fallback scoring"
+            # Extract all files with scores > 0 as fallback
+            selected_files = _extract_files_above_threshold(root_node, 0)
     else:
-        logger.info("AI not available, using fallback file selection")
-        selected_files = _fallback_file_selection(root_node, context_size)
-        reasoning = "AI not configured, used fallback heuristics for file selection"
+        logger.info("AI not available, using fallback scoring")
+        _set_fallback_scores(root_node)
+        reasoning = "AI not configured, used fallback scoring"
+        # Extract all files with scores > 0 as fallback
+        selected_files = _extract_files_above_threshold(root_node, 0)
     
-    # Step 3: Iteratively select files that fit within context size
-    logger.info("Step 3: Fitting selected files within context size")
-    final_content, final_tree, final_summary, final_selected_files = await _fit_files_to_context(
-        query, selected_files, context_size
-    )
+    logger.info("Files selected after AI scoring", extra={
+        "selected_count": len(selected_files)
+    })
+    
+    # Generate digest using existing mechanism
+    logger.info("Generating digest with AI-selected files")
+    
+    # Create filtered query with selected files
+    filtered_query = _create_filtered_query(query, selected_files)
+    final_summary, final_tree, final_content = ingest_query(filtered_query)
+    final_selected_files = selected_files
     
     # Update summary with AI selection info
     enhanced_summary = _enhance_summary_with_ai_info(
@@ -106,7 +110,7 @@ async def ai_ingest_query(
     
     logger.info("AI-powered ingestion completed successfully", extra={
         "final_files_count": len(final_selected_files),
-        "final_content_length": len(final_content),
+        "final_content_length": len(final_content)
     })
     
     return AIIngestResult(
@@ -114,6 +118,7 @@ async def ai_ingest_query(
         tree=final_tree,
         content=final_content,
         selected_files=final_selected_files,
+        selected_files_detailed=selected_files_detailed,
         reasoning=reasoning,
     )
 
@@ -196,6 +201,51 @@ def _fallback_file_selection(root_node: FileSystemNode, context_size: str) -> li
     return selected[:limit]
 
 
+def _set_fallback_scores(node: FileSystemNode) -> None:
+    """Set fallback scores for files when AI is not available."""
+    if node.type == FileSystemNodeType.FILE:
+        # Use heuristics to score files
+        file_name = node.name.lower()
+        file_ext = Path(node.path_str).suffix.lower() if node.path_str else ""
+        
+        # High importance files
+        if any(pattern in file_name for pattern in ['readme', 'main', 'index', 'app', 'server']):
+            node.likelihood_score = 90
+        # Important extensions
+        elif file_ext in {'.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs'}:
+            node.likelihood_score = 70
+        # Config files
+        elif file_ext in {'.json', '.yaml', '.yml', '.toml', '.ini', '.env'}:
+            node.likelihood_score = 60
+        # Documentation
+        elif file_ext in {'.md', '.txt', '.rst'}:
+            node.likelihood_score = 50
+        # Other files
+        else:
+            node.likelihood_score = 30
+    
+    # Recursively process children
+    if node.type == FileSystemNodeType.DIRECTORY and hasattr(node, 'children'):
+        for child in node.children:
+            _set_fallback_scores(child)
+
+
+def _extract_files_above_threshold(node: FileSystemNode, threshold: int) -> list[str]:
+    """Extract file paths that have likelihood scores above the threshold."""
+    files = []
+    
+    def _collect_files(n: FileSystemNode) -> None:
+        if n.type == FileSystemNodeType.FILE and n.path_str:
+            if n.likelihood_score > threshold:
+                files.append(n.path_str)
+        elif n.type == FileSystemNodeType.DIRECTORY and hasattr(n, 'children'):
+            for child in n.children:
+                _collect_files(child)
+    
+    _collect_files(node)
+    return files
+
+
 def _extract_files_recursive(node: FileSystemNode, files: list[str]) -> None:
     """Recursively extract file paths from node tree."""
     if node.type == FileSystemNodeType.FILE and node.path_str:
@@ -204,91 +254,6 @@ def _extract_files_recursive(node: FileSystemNode, files: list[str]) -> None:
         for child in node.children:
             _extract_files_recursive(child, files)
 
-
-async def _fit_files_to_context(
-    query: IngestionQuery, 
-    selected_files: list[str], 
-    context_size: str
-) -> tuple[str, str, str, list[str]]:
-    """Iteratively add files until we reach the context size limit.
-    
-    Returns:
-        tuple: (content, tree, summary, final_selected_files)
-    """
-    context_limit = _parse_context_size_to_tokens(context_size)
-    
-    # Start with an empty set and add files one by one
-    final_selected_files = []
-    current_content = ""
-    current_tree = ""
-    current_summary = ""
-    
-    logger.info("Fitting files to context", extra={
-        "context_limit": context_limit,
-        "candidate_files": len(selected_files)
-    })
-    
-    for file_path in selected_files:
-        # Try adding this file
-        test_files = final_selected_files + [file_path]
-        
-        # Create a test query with these files
-        test_query = _create_filtered_query(query, test_files)
-        
-        try:
-            # Run ingestion with test files
-            test_summary, test_tree, test_content = ingest_query(test_query)
-            
-            # Count tokens in the result
-            combined_content = test_tree + "\n" + test_content
-            token_count = _count_tokens_tiktoken(combined_content)
-            
-            if token_count <= context_limit:
-                # This file fits, keep it
-                final_selected_files = test_files
-                current_content = test_content
-                current_tree = test_tree
-                current_summary = test_summary
-                
-                logger.debug("Added file to selection", extra={
-                    "file": file_path,
-                    "current_tokens": token_count,
-                    "files_selected": len(final_selected_files)
-                })
-            else:
-                # This file would exceed the limit, stop here
-                logger.info("Reached context limit", extra={
-                    "would_be_tokens": token_count,
-                    "limit": context_limit,
-                    "final_files": len(final_selected_files)
-                })
-                break
-                
-        except Exception as e:
-            logger.warning("Failed to test file inclusion", extra={
-                "file": file_path,
-                "error": str(e)
-            })
-            # Skip this file and continue
-            continue
-    
-    if not final_selected_files:
-        # If no files fit, take at least the first one and crop it
-        logger.warning("No files fit in context, taking first file and cropping")
-        if selected_files:
-            test_query = _create_filtered_query(query, [selected_files[0]])
-            current_summary, current_tree, current_content = ingest_query(test_query)
-            combined_content = current_tree + "\n" + current_content
-            current_content = _crop_to_context_window(combined_content, context_size)
-            final_selected_files = [selected_files[0]]
-        else:
-            # Fallback to empty response
-            current_summary = "No files could be selected within context size"
-            current_tree = "Empty repository structure"
-            current_content = "No content available"
-            final_selected_files = []
-    
-    return current_content, current_tree, current_summary, final_selected_files
 
 
 def _count_tokens_tiktoken(text: str) -> int:

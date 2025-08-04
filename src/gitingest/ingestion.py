@@ -41,15 +41,6 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
         If the path cannot be found, is not a file, or the file has no content.
 
     """
-    logger.info(
-        "Starting file ingestion",
-        extra={
-            "slug": query.slug,
-            "subpath": query.subpath,
-            "local_path": str(query.local_path),
-            "max_file_size": query.max_file_size,
-        },
-    )
 
     subpath = Path(query.subpath.strip("/")).as_posix()
     path = query.local_path / subpath
@@ -84,13 +75,6 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
             msg = f"File {file_node.name} has no content"
             raise ValueError(msg)
 
-        logger.info(
-            "Single file processing completed",
-            extra={
-                "file_name": file_node.name,
-                "file_size": file_node.size,
-            },
-        )
         return format_node(file_node, query=query)
 
     logger.info("Processing directory", extra={"directory_path": str(path)})
@@ -105,17 +89,6 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
     stats = FileSystemStats()
 
     _process_node(node=root_node, query=query, stats=stats)
-
-    logger.info(
-        "Directory processing completed",
-        extra={
-            "total_files": root_node.file_count,
-            "total_directories": root_node.dir_count,
-            "total_size_bytes": root_node.size,
-            "stats_total_files": stats.total_files,
-            "stats_total_size": stats.total_size,
-        },
-    )
 
     return format_node(root_node, query=query)
 

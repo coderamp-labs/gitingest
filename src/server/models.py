@@ -82,6 +82,8 @@ class IngestSuccessResponse(BaseModel):
         The user prompt used for AI file selection.
     selected_files : list[str]
         List of file paths selected by AI for inclusion.
+    reasoning : str
+        AI reasoning for file selection.
 
     """
 
@@ -94,6 +96,8 @@ class IngestSuccessResponse(BaseModel):
     context_size: str = Field(..., description="Context size used")
     user_prompt: str = Field(..., description="User prompt used")
     selected_files: list[str] = Field(..., description="AI-selected file paths")
+    selected_files_detailed: dict[str, dict] | None = Field(None, description="Detailed file info with reasoning")
+    reasoning: str = Field(..., description="AI reasoning for file selection")
 
 
 class IngestErrorResponse(BaseModel):

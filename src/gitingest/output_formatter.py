@@ -168,6 +168,19 @@ def _create_tree_structure(
         display_name += "/"
     elif node.type == FileSystemNodeType.SYMLINK:
         display_name += " -> " + readlink(node.path).name
+    
+    # Add likelihood score if this file was selected by AI (score > 0)
+    if node.likelihood_score > 0:
+        # Color code based on score
+        if node.likelihood_score >= 80:
+            score_indicator = f" [🟢 {node.likelihood_score}%]"
+        elif node.likelihood_score >= 60:
+            score_indicator = f" [🟡 {node.likelihood_score}%]"
+        elif node.likelihood_score >= 40:
+            score_indicator = f" [🟠 {node.likelihood_score}%]"
+        else:
+            score_indicator = f" [🔴 {node.likelihood_score}%]"
+        display_name += score_indicator
 
     tree_str += f"{prefix}{current_prefix}{display_name}\n"
 

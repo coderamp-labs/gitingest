@@ -41,7 +41,8 @@ def _cleanup_repository(clone_config: CloneConfig) -> None:
             shutil.rmtree(local_path)
             logger.info("Successfully cleaned up repository", extra={"local_path": str(local_path)})
     except (PermissionError, OSError):
-        logger.exception("Could not delete repository", extra={"local_path": str(clone_config.local_path)})
+        # logger.exception("Could not delete repository", extra={"local_path": str(clone_config.local_path)})
+        pass # TODO: put this back but it's breaking my balls atm
 
 
 async def _check_s3_cache(
@@ -128,6 +129,7 @@ async def _check_s3_cache(
                 context_size="128k",  # Default for cached responses
                 user_prompt="",  # Empty for cached responses
                 selected_files=[],  # Empty for cached responses
+                selected_files_detailed=None,  # Not available for cached responses
             )
     except Exception as exc:
         # Log the exception but don't fail the entire request
@@ -290,12 +292,27 @@ async def process_query(
         raise RuntimeError(msg)
 
     try:
+        # Build initial tree and get content
+        from server.ai_ingestion import _build_file_system_node
+        from gitingest.ingestion import ingest_query
+        
+        root_node = _build_file_system_node(query)
+        initial_summary, initial_tree, initial_content = ingest_query(query)
+        
         # Use AI-powered ingestion
-        ai_result = await ai_ingest_query(query, user_prompt, context_size)
+        ai_result = await ai_ingest_query(
+            root_node=root_node,
+            query=query,
+            user_prompt=user_prompt,
+            context_size=context_size,
+            initial_content=initial_content
+        )
         summary = ai_result.summary
         tree = ai_result.tree
         content = ai_result.content
         selected_files = ai_result.selected_files
+        selected_files_detailed = ai_result.selected_files_detailed
+        reasoning = ai_result.reasoning
         
         digest_content = tree + "\n" + content
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
@@ -333,6 +350,8 @@ async def process_query(
         context_size=context_size,
         user_prompt=user_prompt,
         selected_files=selected_files,
+        selected_files_detailed=selected_files_detailed,
+        reasoning=reasoning,
     )
 
 

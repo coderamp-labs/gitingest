@@ -23,7 +23,8 @@ logger = get_logger(__name__)
 class FileSelectionResponse(BaseModel):
     """Response model for AI file selection."""
     
-    selected_files: list[str]
+    selected_files: list[str]  # file paths selected by AI
+    selected_files_detailed: dict[str, dict] | None  # detailed info with reasoning
     reasoning: str
 
 
@@ -137,21 +138,29 @@ CONTENT SAMPLE (first ~1M tokens):
 {content_sample}
 
 CONSTRAINTS:
-- Target exactly {context_size_tokens:,} tokens in the final output
+- The output will be trimmed down to {context_size_tokens:,} tokens in the end.
 - Prioritize files that are most relevant to the user's request
 - Include key architectural files (main entry points, configuration, core modules)
 - Balance breadth (overview) with depth (important details)
 - Avoid redundant or duplicate content
 - Consider file dependencies and relationships
+- When in doubt, include the file
 
 RESPONSE FORMAT:
+For every file, include a level of "likelihood of being relevant" from 1 to 100.
+Multiple files can have the same likelihood.
 Return a JSON object with this exact structure:
 {{
-    "selected_files": [
-        "path/to/file1.py",
-        "path/to/file2.js",
-        "path/to/file3.md"
-    ],
+    "selected_files": {{
+        "path/to/file1.py": {{
+            "score": 90,
+            "reasoning": "Brief explanation of why this file has this score"
+        }},
+        "path/to/file2.py": {{
+            "score": 80,
+            "reasoning": "Brief explanation of why this file has this score"
+        }}
+    }},
     "reasoning": "Brief explanation of why these files were selected and how they serve the user's request."
 }}
 
@@ -219,14 +228,42 @@ Only return the JSON object, no other text."""
                 logger.warning("Failed to parse JSON response, attempting to extract files manually")
                 # Fallback: try to extract file paths from response
                 file_paths = re.findall(r'"([^"]+\.[a-zA-Z]+)"', response_text)
+                # Convert to new dict format with default scores
+                file_dict = {path: {"score": 50, "reasoning": "Default score"} for path in file_paths}
                 parsed_response = {
-                    "selected_files": file_paths,
+                    "selected_files": file_dict,
                     "reasoning": "Extracted files from AI response (JSON parsing failed)"
                 }
             
+            # Extract selected files and scores from AI response
+            selected_files_data = parsed_response.get("selected_files", {})
+            reasoning = parsed_response.get("reasoning", "No reasoning provided")
+            
+            # Convert new format to scores dict and preserve detailed info
+            selected_files_dict = {}
+            detailed_files = {}
+            for file_path, file_data in selected_files_data.items():
+                if isinstance(file_data, dict) and "score" in file_data:
+                    selected_files_dict[file_path] = file_data["score"]
+                    detailed_files[file_path] = file_data
+                else:
+                    # Fallback for old format or malformed data
+                    selected_files_dict[file_path] = file_data if isinstance(file_data, int) else 50
+                    detailed_files[file_path] = {"score": file_data if isinstance(file_data, int) else 50}
+            
+            logger.info("Applying AI scores to tree", extra={
+                "files_with_scores": len(selected_files_dict),
+                "sample_scores": dict(list(selected_files_dict.items())[:3]) if selected_files_dict else {}
+            })
+            
+            # Update tree nodes with likelihood scores
+            self._update_tree_scores(root_node, selected_files_dict)
+            
+            # Return the actual file paths for frontend display
             selection = FileSelectionResponse(
-                selected_files=parsed_response.get("selected_files", []),
-                reasoning=parsed_response.get("reasoning", "No reasoning provided")
+                selected_files=list(selected_files_dict.keys()),
+                selected_files_detailed=detailed_files if detailed_files else None,
+                reasoning=reasoning
             )
             
             logger.info("AI file selection completed", extra={
@@ -238,11 +275,13 @@ Only return the JSON object, no other text."""
             
         except Exception as e:
             logger.error("AI file selection failed", extra={"error": str(e)})
-            # Fallback: return all files up to a reasonable limit
-            all_files = self._extract_all_files(root_node)
+            # Set fallback scores directly on tree nodes
+            self._set_fallback_scores(root_node)
+            
             return FileSelectionResponse(
-                selected_files=all_files[:50],  # Limit to 50 files as fallback
-                reasoning=f"AI selection failed ({str(e)}), using fallback selection of key files"
+                selected_files=[],
+                selected_files_detailed=None,
+                reasoning=f"AI selection failed ({str(e)}), using fallback scoring"
             )
     
     def _extract_all_files(self, node: FileSystemNode, files: list[str] | None = None) -> list[str]:
@@ -257,6 +296,44 @@ Only return the JSON object, no other text."""
                 self._extract_all_files(child, files)
         
         return files
+
+    def _update_tree_scores(self, root_node: FileSystemNode, selected_files_dict: dict[str, int]) -> None:
+        """Update tree nodes with likelihood scores from AI selection."""
+        for path, score in selected_files_dict.items():
+            node = root_node[path]
+            if node:
+                node.likelihood_score = score
+                logger.debug("Updated node score", extra={
+                    "path": path,
+                    "score": score
+                })
+
+    def _set_fallback_scores(self, root_node: FileSystemNode) -> None:
+        """Set fallback scores for files when AI is not available."""
+        def set_fallback_score(node: FileSystemNode) -> None:
+            if node.type.value == "file":
+                # Use heuristics to score files
+                file_name = node.name.lower()
+                file_ext = node.path_str.split('.')[-1].lower() if node.path_str and '.' in node.path_str else ""
+                
+                # High importance files
+                if any(pattern in file_name for pattern in ['readme', 'main', 'index', 'app', 'server']):
+                    node.likelihood_score = 90
+                # Important extensions
+                elif file_ext in {'py', 'js', 'ts', 'java', 'cpp', 'c', 'go', 'rs'}:
+                    node.likelihood_score = 70
+                # Config files
+                elif file_ext in {'json', 'yaml', 'yml', 'toml', 'ini', 'env'}:
+                    node.likelihood_score = 60
+                # Documentation
+                elif file_ext in {'md', 'txt', 'rst'}:
+                    node.likelihood_score = 50
+                # Other files
+                else:
+                    node.likelihood_score = 30
+        
+        # Use the map function to apply fallback scores to all nodes
+        root_node.map(set_fallback_score)
 
 
 def get_ai_file_selector() -> AIFileSelector | None:

@@ -14,6 +14,8 @@ from gitingest.utils.notebook import process_notebook
 if TYPE_CHECKING:
     from pathlib import Path
 
+from pathlib import PurePath
+
 SEPARATOR = "=" * 48  # Tiktoken, the tokenizer openai uses, counts 2 tokens if we have more than 48
 
 
@@ -49,6 +51,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
     dir_count: int = 0
     depth: int = 0
     children: list[FileSystemNode] = field(default_factory=list)
+    likelihood_score: int = 0  # AI likelihood score (0-100) for file selection, 0 = default/not AI-selected
 
     def sort_children(self) -> None:
         """Sort the children nodes of a directory according to a specific order.
@@ -82,6 +85,61 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
             return (3 if not name.startswith(".") else 4, name)
 
         self.children.sort(key=_sort_key)
+
+    def map(self, func) -> None:
+        """Apply a function to all nodes in the tree (depth-first).
+        
+        Parameters
+        ----------
+        func : callable
+            Function to apply to each node. Takes a FileSystemNode as argument.
+            
+        Example
+        -------
+        >>> def print_file_names(node):
+        ...     if node.type == FileSystemNodeType.FILE:
+        ...         print(node.name)
+        >>> root_node.map(print_file_names)
+        """
+        # Apply function to current node
+        func(self)
+        
+        # Recursively apply to all children
+        if self.type == FileSystemNodeType.DIRECTORY and self.children:
+            for child in self.children:
+                child.map(func)
+
+    def __getitem__(self, path: str) -> "FileSystemNode | None":
+        """Get a node by its path string.
+        
+        Parameters
+        ----------
+        path : str
+            The path string to search for
+            
+        Returns
+        -------
+        FileSystemNode | None
+            The node with the matching path, or None if not found
+            
+        Example
+        -------
+        >>> file_node = root_node["src/main.py"]
+        >>> if file_node:
+        ...     file_node.likelihood_score = 95
+        """
+        # Check if this node matches (using OS-independent path comparison)
+        if self.path_str and PurePath(self.path_str) == PurePath(path):
+            return self
+        
+        # Search in children
+        if self.type == FileSystemNodeType.DIRECTORY and self.children:
+            for child in self.children:
+                result = child[path]
+                if result:
+                    return result
+        
+        return None
 
     @property
     def content_string(self) -> str:
