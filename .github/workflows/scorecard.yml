@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Scorecard
-        uses: ossf/scorecard-action@05b42c624433fc40578a4040d5cf5e36ddca8cde
+        uses: ossf/scorecard-action@f35c64557cf912815708bb1126d9948f3e459487
         with:
           results_file: results.sarif
           results_format: sarif
