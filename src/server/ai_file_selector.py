@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from typing import TYPE_CHECKING
 
 import google.generativeai as genai
@@ -38,7 +39,7 @@ class AIFileSelector:
             raise ValueError("GEMINI_API_KEY environment variable is required")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-pro")
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
         self.encoding = tiktoken.get_encoding("o200k_base")
     
     def _count_tokens(self, text: str) -> int:
@@ -207,7 +208,11 @@ Only return the JSON object, no other text."""
         try:
             # Call Gemini API
             logger.info("Calling Gemini API for file selection")
+            gemini_start_time = time.time()
             response = await self.model.generate_content_async(prompt)
+            gemini_end_time = time.time()
+            gemini_duration = gemini_end_time - gemini_start_time
+            logger.info("Gemini API call completed", extra={"duration": gemini_duration})
             
             if not response.text:
                 raise ValueError("Empty response from Gemini API")

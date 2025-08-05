@@ -381,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Make functions available globally
 window.handleAISubmit = handleAISubmit;
+window.handleSubmit = handleAISubmit; // Alias for compatibility
 window.copyText = copyText;
 window.copyFullDigest = copyFullDigest;
 window.downloadFullDigest = downloadFullDigest;
