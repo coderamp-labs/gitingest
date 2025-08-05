@@ -108,7 +108,7 @@ def format_node_with_context_limit(
     # Update summary with final info
     if node.type == FileSystemNodeType.DIRECTORY:
         # Count how many files were actually included
-        included_files = len([line for line in optimized_content.split('\n') if line.startswith('=' * 48)])
+        included_files = len([line for line in optimized_content.split('\n') if line.startswith('=' * 48)]) / 2
         summary += f"Files included: {included_files} (optimized for {max_tokens:,} tokens)\n"
     elif node.type == FileSystemNodeType.FILE:
         summary += f"File: {node.name}\n"
@@ -325,11 +325,17 @@ def _optimize_content_with_knapsack(node: FileSystemNode, max_tokens: int) -> st
     if not file_items:
         return "[No files found]"
     
-    # Calculate value/cost ratio for each file and sort by it
-    for item in file_items:
-        relevance_score = max(item['relevance'], 1)  # Avoid division by zero
-        file_type_multiplier = _get_file_type_multiplier(item['path'])
+    # Filter out files with 0 relevance (not AI-selected)
+    relevant_items = [item for item in file_items if item['relevance'] > 0]
+    
+    if not relevant_items:
+        return "[No relevant files found - all files have 0 AI relevance score]"
+    
+    # Calculate value/cost ratio for each relevant file
+    for item in relevant_items:
+        relevance_score = item['relevance']  # Already > 0, no need for max()
         
+        file_type_multiplier = _get_file_type_multiplier(item['path'])
         # Value = relevance * type_multiplier * content_quality
         content_quality = _estimate_content_quality(item['content'])
         value = relevance_score * file_type_multiplier * content_quality
@@ -341,7 +347,7 @@ def _optimize_content_with_knapsack(node: FileSystemNode, max_tokens: int) -> st
         item['ratio'] = value / max(cost, 1)
     
     # Sort by ratio (descending - best value first)
-    sorted_items = sorted(file_items, key=lambda x: x['ratio'], reverse=True)
+    sorted_items = sorted(relevant_items, key=lambda x: x['ratio'], reverse=True)
     
     # Greedy selection: pick highest ratio items that fit
     selected_items = []
@@ -363,7 +369,7 @@ def _optimize_content_with_knapsack(node: FileSystemNode, max_tokens: int) -> st
     result = "\n".join(content_parts)
     
     logger.info(
-        f"Knapsack optimization: selected {len(selected_items)}/{len(file_items)} files, "
+        f"Knapsack optimization: selected {len(selected_items)}/{len(relevant_items)} files, "
         f"using {total_tokens}/{max_tokens} tokens"
     )
     
