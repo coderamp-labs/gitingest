@@ -108,7 +108,7 @@ def format_node_with_context_limit(
     # Update summary with final info
     if node.type == FileSystemNodeType.DIRECTORY:
         # Count how many files were actually included
-        included_files = len([line for line in optimized_content.split('\n') if line.startswith('=' * 48)]) / 2
+        included_files = int(len([line for line in optimized_content.split('\n') if line.startswith('=' * 48)]) / 2)
         summary += f"Files included: {included_files} (optimized for {max_tokens:,} tokens)\n"
     elif node.type == FileSystemNodeType.FILE:
         summary += f"File: {node.name}\n"
