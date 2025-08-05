@@ -15,6 +15,9 @@ dependencies = [
     "strenum; python_version < '3.11'",
     "tiktoken>=0.7.0",  # Support for o200k_base encoding
     "typing_extensions>= 4.0.0; python_version < '3.10'",
+    "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
+    "autotiktokenizer=*",
+    "prometheus-client"
 ]
 
 license = {file = "LICENSE"}

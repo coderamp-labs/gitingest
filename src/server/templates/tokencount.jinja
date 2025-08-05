@@ -1,0 +1,40 @@
+{% extends "base.jinja" %}
+{% block title %}Token Estimator{% endblock %}
+{% block content %}
+<div class="relative">
+    <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
+    <div class="rounded-xl relative z-20 p-8 sm:p-10 border-[3px] border-gray-900 bg-[#fff4da]">
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">Token Estimator</h1>
+        <form method="post" action="/tokencount" class="space-y-6">
+            <div>
+                <label for="input_text" class="block mb-2 font-medium">Text to analyze:</label>
+                <textarea name="input_text" id="input_text" rows="4" required class="w-full border-[3px] border-gray-900 rounded p-2 mb-2 bg-[#E8F0FE] focus:outline-none">{{ input_text if input_text else '' }}</textarea>
+            </div>
+            <div class="mb-10">
+                <label for="model_id" class="block mb-2 font-medium">Model:</label>
+                <select name="model_id" id="model_id" class="w-full border-[3px] border-gray-900 rounded p-2 bg-[#E8F0FE] focus:outline-none">
+                    {% for name, model in supported_models.items() %}
+                        <option value="{{ model }}" {% if model_id == model %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded border-[3px] border-gray-900">Count Tokens</button>
+            </div>
+        </form>
+        {% if result %}
+        <div class="mt-6 p-4 border-[3px] border-gray-900 rounded bg-white">
+            <h2 class="text-xl font-semibold mb-2">Result</h2>
+            <p><b>Token count:</b> {{ result.token_count }}</p>
+            <p><b>Character count:</b> {{ result.character_count }}</p>
+            <p><b>Model:</b> {{ result.model_id }}</p>
+        </div>
+        {% endif %}
+        {% if error %}
+        <div class="mt-6 p-4 border-[3px] border-red-600 rounded bg-red-100 text-red-800">
+            <b>Error:</b> {{ error }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 
