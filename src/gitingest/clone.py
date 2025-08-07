@@ -129,13 +129,14 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
             # Fetch the specific commit
             logger.debug("Fetching specific commit", extra={"commit": commit})
             
-            # Set up authentication for fetch operations
+            # Set up authentication environment for fetch operations
+            env = None
             if token and is_github_host(url):
-                git_cmd = repo.git.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=url))
-            else:
-                git_cmd = repo.git
+                import os
+                env = os.environ.copy()
+                env["GIT_CONFIG_PARAMETERS"] = create_git_auth_header(token, url=url)
 
-            git_cmd.fetch("--depth=1", "origin", commit)
+            repo.git.fetch("--depth=1", "origin", commit, env=env)
 
             # Checkout the specific commit
             logger.info("Checking out commit", extra={"commit": commit})

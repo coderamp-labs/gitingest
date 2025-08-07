@@ -243,11 +243,7 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     await ensure_git_installed()
 
     def fetch_refs():
-        git_cmd = Git()
-        
-        # Set up authentication if needed
-        if token and is_github_host(url):
-            git_cmd = git_cmd.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=url))
+        git_cmd = create_git_command_with_auth(token, url)
 
         fetch_tags = ref_type == "tags"
         to_fetch = "tags" if fetch_tags else "heads"
@@ -278,7 +274,29 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     ]
 
 
-def create_git_command_with_auth(token: str | None, url: str) -> Git:
+class GitCommandWithAuth:
+    """A wrapper around Git command that stores authentication environment."""
+    
+    def __init__(self, token: str | None, url: str):
+        self.git = Git()
+        self.env = None
+        
+        if token and is_github_host(url):
+            import os
+            self.env = os.environ.copy()
+            self.env["GIT_CONFIG_PARAMETERS"] = create_git_auth_header(token, url=url)
+    
+    def execute(self, args: list[str]) -> str:
+        """Execute a git command with authentication if needed."""
+        return self.git.execute(args, env=self.env)
+    
+    @property 
+    def custom_environment(self) -> dict[str, str] | None:
+        """Get the custom environment for testing."""
+        return self.env
+
+
+def create_git_command_with_auth(token: str | None, url: str) -> GitCommandWithAuth:
     """Create a Git command object with authentication if needed.
 
     Parameters
@@ -290,15 +308,11 @@ def create_git_command_with_auth(token: str | None, url: str) -> Git:
 
     Returns
     -------
-    Git
-        A Git command object with authentication configured if needed.
+    GitCommandWithAuth
+        A Git command wrapper with authentication configured if needed.
 
     """
-    if token and is_github_host(url):
-        # Set authentication through environment
-        auth_config = create_git_auth_header(token, url=url)
-        return Git().with_custom_environment(GIT_CONFIG_PARAMETERS=auth_config)
-    return Git()
+    return GitCommandWithAuth(token, url)
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -369,13 +383,15 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     def setup_sparse_checkout():
         try:
             repo = Repo(config.local_path)
-            git_cmd = repo.git
             
-            # Set up authentication if needed
+            # Set up authentication environment if needed
+            env = None
             if token and is_github_host(config.url):
-                git_cmd = git_cmd.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=config.url))
+                import os
+                env = os.environ.copy()
+                env["GIT_CONFIG_PARAMETERS"] = create_git_auth_header(token, url=config.url)
             
-            git_cmd.execute(["sparse-checkout", "set", subpath])
+            repo.git.execute(["sparse-checkout", "set", subpath], env=env)
         except Exception as e:
             raise RuntimeError(f"Failed to setup sparse checkout: {str(e)}") from e
 

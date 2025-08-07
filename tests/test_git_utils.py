@@ -73,11 +73,11 @@ def test_create_git_command_with_auth(
     
     # Check if the git command has authentication environment configured
     if should_have_auth:
-        assert hasattr(git_cmd, 'custom_environment')
+        assert git_cmd.custom_environment is not None
         assert 'GIT_CONFIG_PARAMETERS' in git_cmd.custom_environment
     else:
-        # For no auth case, should be basic Git command
-        assert not hasattr(git_cmd, 'custom_environment') or 'GIT_CONFIG_PARAMETERS' not in (git_cmd.custom_environment or {})
+        # For no auth case, should not have custom environment
+        assert git_cmd.custom_environment is None
 
 
 @pytest.mark.parametrize(
@@ -118,7 +118,7 @@ def test_create_git_command_with_auth_calls(
 
     if should_have_auth:
         header_mock.assert_called_once_with(token, url=url)
-        assert hasattr(git_cmd, 'custom_environment')
+        assert git_cmd.custom_environment is not None
         assert git_cmd.custom_environment['GIT_CONFIG_PARAMETERS'] == "HEADER"
     else:
         header_mock.assert_not_called()
@@ -194,7 +194,7 @@ def test_create_git_command_with_auth_ghe_urls(
     git_cmd = create_git_command_with_auth(token, url)
 
     # Should have authentication configured
-    assert hasattr(git_cmd, 'custom_environment')
+    assert git_cmd.custom_environment is not None
     assert 'GIT_CONFIG_PARAMETERS' in git_cmd.custom_environment
     auth_header = git_cmd.custom_environment['GIT_CONFIG_PARAMETERS']
 
@@ -220,4 +220,4 @@ def test_create_git_command_with_auth_ignores_non_github_urls(
     git_cmd = create_git_command_with_auth(token, url)
 
     # Should not have authentication configured for non-GitHub URLs
-    assert not hasattr(git_cmd, 'custom_environment') or 'GIT_CONFIG_PARAMETERS' not in (git_cmd.custom_environment or {})
+    assert git_cmd.custom_environment is None
