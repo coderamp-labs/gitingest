@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -23,125 +24,145 @@ class FileSystemStats:
 
 
 @dataclass
-class FileSystemNode(Source):  # pylint: disable=too-many-instance-attributes
-    """Base class for filesystem nodes (files, directories, symlinks)."""
+class FileSystemNode(Source, ABC):  # pylint: disable=too-many-instance-attributes
+    """Abstract base class for filesystem nodes (files, directories, symlinks)."""
 
-    name: str = ""
-    path_str: str = ""
-    path: Path | None = None
+    # Required fields - use None defaults and validate in __post_init__
+    name: str | None = None
+    path_str: str | None = None
+    path: "Path | None" = None
+    
+    # Optional fields with sensible defaults
     size: int = 0
     file_count: int = 0
     dir_count: int = 0
     depth: int = 0
     children: list[FileSystemNode] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        """Validate required fields after initialization."""
+        if self.name is None:
+            raise ValueError("FileSystemNode requires 'name' field")
+        if self.path_str is None:
+            raise ValueError("FileSystemNode requires 'path_str' field")
+        if self.path is None:
+            raise ValueError("FileSystemNode requires 'path' field")
+
+    # Abstract methods - must be implemented by subclasses
     @property
-    def tree(self) -> str:
-        """Return the name of this node."""
-        return self.name
+    @abstractmethod
+    def display_name(self) -> str:
+        """Display name for tree view (e.g., file.py, dir/, symlink -> target)."""
+        
+    @property
+    @abstractmethod
+    def node_type(self) -> str:
+        """Type name for content string header (FILE, DIRECTORY, SYMLINK)."""
+        
+    @property
+    @abstractmethod
+    def is_single_file(self) -> bool:
+        """True if this node represents a single file."""
+        
+    @abstractmethod
+    def gather_contents(self) -> str:
+        """Gather all file contents under this node."""
 
-    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
-        """Return default tree representation with just the name."""
-        current_prefix = "└── " if is_last else "├── "
-        return [f"{prefix}{current_prefix}{self.name}"]
-
+    # Concrete methods with default implementations
     def sort_children(self) -> None:
-        """Sort the children nodes of a directory according to a specific order."""
-
+        """Sort children: README first, then files, then dirs, hidden last."""
         def _sort_key(child: FileSystemNode) -> tuple[int, str]:
-            name = child.name.lower()
-            # Each child knows its own sort priority - polymorphism!
-            priority = child.get_sort_priority()
-            if priority == 0 and (name == "readme" or name.startswith("readme.")):
+            name = (child.name or "").lower()
+            
+            # README files get highest priority
+            if name == "readme" or name.startswith("readme."):
                 return (0, name)
-            if priority == 0:  # Files
+            
+            # Then sort by type and visibility
+            if isinstance(child, FileSystemFile):
                 return (1 if not name.startswith(".") else 2, name)
-            # Directories, symlinks, etc.
-            return (3 if not name.startswith(".") else 4, name)
+            else:  # Directories, symlinks
+                return (3 if not name.startswith(".") else 4, name)
 
         self.children.sort(key=_sort_key)
 
-    def get_sort_priority(self) -> int:
-        """Return sort priority. Override in subclasses."""
-        return 1  # Default: not a file
-
     @property
     def content_string(self) -> str:
-        """Return the content of the node as a string, including path and content.
-
-        Returns
-        -------
-        str
-            A string representation of the node's content.
-
-        """
-        type_name = self.__class__.__name__.upper().replace("FILESYSTEM", "")
-
+        """Content with header for output format."""
         parts = [
             SEPARATOR,
-            f"{type_name}: {str(self.path_str).replace(os.sep, '/')}",
+            f"{self.node_type}: {str(self.path_str or '').replace(os.sep, '/')}",
             SEPARATOR,
             f"{self.content}",
         ]
-
         return "\n".join(parts) + "\n\n"
 
     def get_content(self) -> str:
-        """Return file content. Override in subclasses for specific behavior."""
-        if self.path is None:
+        """Default content reading with encoding detection."""
+        from gitingest.utils.file_utils import _decodes, _get_preferred_encodings, _read_chunk
+        from gitingest.utils.notebook import process_notebook
+
+        if not self.path:
             return "Error: No path specified"
 
+        # Handle notebooks specially
+        if self.path.suffix == ".ipynb":
+            try:
+                return process_notebook(self.path)
+            except Exception as exc:
+                return f"Error processing notebook: {exc}"
+
+        # Read chunk and detect encoding
+        chunk = _read_chunk(self.path)
+        if chunk is None:
+            return "Error reading file"
+        if chunk == b"":
+            return "[Empty file]"
+        if not _decodes(chunk, "utf-8"):
+            return "[Binary file]"
+
+        # Find working encoding
+        good_enc = next(
+            (enc for enc in _get_preferred_encodings() if _decodes(chunk, encoding=enc)),
+            None,
+        )
+        if good_enc is None:
+            return "Error: Unable to decode file with available encodings"
+
         try:
-            return self.path.read_text(encoding="utf-8")
-        except Exception as e:
-            return f"Error reading content of {self.name}: {e}"
-
-    def get_summary_info(self) -> str:
-        """Return summary information. Override in subclasses."""
-        return ""
-
-    def is_single_file(self) -> bool:
-        """Return whether this node represents a single file."""
-        return False
-
-    def gather_contents(self) -> str:
-        """Gather file contents. Override in subclasses."""
-        return self.content_string
-
-    def get_display_name(self) -> str:
-        """Get display name for tree view. Override in subclasses."""
-        return self.name
-
-    def has_children(self) -> bool:
-        """Return whether this node has children to display."""
-        return False
+            with self.path.open(encoding=good_enc) as fp:
+                return fp.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            return f"Error reading file with {good_enc!r}: {exc}"
 
     @property
     def content(self) -> str:
-        """Return file content (simplified version for backward compatibility)."""
+        """Backward compatibility property."""
         return self.get_content()
 
 
 @dataclass
 class FileSystemFile(FileSystemNode):
     """Represents a file in the filesystem."""
-
-    def get_sort_priority(self) -> int:
-        """Files have priority 0 for sorting."""
-        return 0
-
-    def get_summary_info(self) -> str:
-        """Return file summary information."""
-        return f"File: {self.name}\nLines: {len(self.content.splitlines()):,}\n"
-
+    
+    @property
+    def display_name(self) -> str:
+        """Files show just their name."""
+        return self.name or ""
+    
+    @property
+    def node_type(self) -> str:
+        """File type identifier."""
+        return "FILE"
+    
+    @property
     def is_single_file(self) -> bool:
         """Files are single files."""
         return True
-
-    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
-        """Render the tree representation of this file."""
-        current_prefix = "└── " if is_last else "├── "
-        return [f"{prefix}{current_prefix}{self.name}"]
+    
+    def gather_contents(self) -> str:
+        """Files return their content string."""
+        return self.content_string
 
 
 @dataclass
@@ -149,66 +170,29 @@ class FileSystemDirectory(FileSystemNode):
     """Represents a directory in the filesystem."""
 
     file_count_total: int = 0
+    
+    @property
+    def display_name(self) -> str:
+        """Directories get trailing slash."""
+        return (self.name or "") + "/"
+    
+    @property
+    def node_type(self) -> str:
+        """Directory type identifier."""
+        return "DIRECTORY"
+    
+    @property
+    def is_single_file(self) -> bool:
+        """Directories are not single files."""
+        return False
+    
+    def gather_contents(self) -> str:
+        """Recursively gather all child contents."""
+        return "\n".join(child.gather_contents() for child in self.children)
 
     def get_content(self) -> str:
         """Directories cannot have content."""
-        msg = "Cannot read content of a directory node"
-        raise ValueError(msg)
-
-    def get_summary_info(self) -> str:
-        """Return directory summary information."""
-        return f"Files analyzed: {self.file_count}\n"
-
-    def gather_contents(self) -> str:
-        """Recursively gather contents of all files under this directory."""
-        return "\n".join(child.gather_contents() for child in self.children)
-
-    def get_display_name(self) -> str:
-        """Directories get a trailing slash."""
-        return self.name + "/"
-
-    def has_children(self) -> bool:
-        """Directories have children if the list is not empty."""
-        return bool(self.children)
-
-    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
-        """Render the tree representation of this directory."""
-        lines = []
-        current_prefix = "└── " if is_last else "├── "
-        display_name = self.name + "/"
-        lines.append(f"{prefix}{current_prefix}{display_name}")
-        if hasattr(self, "children") and self.children:
-            new_prefix = prefix + ("    " if is_last else "│   ")
-            for i, child in enumerate(self.children):
-                is_last_child = i == len(self.children) - 1
-                lines.extend(child.render_tree(prefix=new_prefix, is_last=is_last_child))
-        return lines
-
-    @property
-    def tree(self) -> str:
-        """Return the tree representation of this directory."""
-        return "\n".join(self.render_tree())
-
-
-@dataclass
-class GitRepository(FileSystemDirectory):
-    """A directory that contains a .git folder, representing a Git repository."""
-
-    git_info: dict = field(default_factory=dict)  # Store git metadata like branch, commit, etc.
-
-    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
-        """Render the tree representation of this git repository."""
-        lines = []
-        current_prefix = "└── " if is_last else "├── "
-        # Mark as git repo in the tree
-        display_name = f"{self.name}/ (git repository)"
-        lines.append(f"{prefix}{current_prefix}{display_name}")
-        if hasattr(self, "children") and self.children:
-            new_prefix = prefix + ("    " if is_last else "│   ")
-            for i, child in enumerate(self.children):
-                is_last_child = i == len(self.children) - 1
-                lines.extend(child.render_tree(prefix=new_prefix, is_last=is_last_child))
-        return lines
+        raise ValueError("Cannot read content of a directory node")
 
 
 @dataclass
@@ -216,18 +200,43 @@ class FileSystemSymlink(FileSystemNode):
     """Represents a symbolic link in the filesystem."""
 
     target: str = ""
-    # Add symlink-specific fields if needed
+    
+    @property
+    def display_name(self) -> str:
+        """Symlinks show target."""
+        return f"{self.name or ''} -> {self.target}"
+    
+    @property
+    def node_type(self) -> str:
+        """Symlink type identifier."""
+        return "SYMLINK"
+    
+    @property
+    def is_single_file(self) -> bool:
+        """Symlinks are not single files."""
+        return False
+    
+    def gather_contents(self) -> str:
+        """Symlinks return their content string."""
+        return self.content_string
 
     def get_content(self) -> str:
-        """Symlinks content is what they point to."""
+        """Symlinks content is their target."""
         return self.target
 
-    def get_display_name(self) -> str:
-        """Symlinks show target."""
-        return f"{self.name} -> {self.target}"
 
-    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
-        """Render the tree representation of this symlink."""
-        current_prefix = "└── " if is_last else "├── "
-        display_name = f"{self.name} -> {self.target}" if self.target else self.name
-        return [f"{prefix}{current_prefix}{display_name}"]
+@dataclass
+class GitRepository(FileSystemDirectory):
+    """A directory that contains a .git folder, representing a Git repository."""
+
+    git_info: dict = field(default_factory=dict)
+    
+    @property
+    def display_name(self) -> str:
+        """Git repos show as special directories."""
+        return f"{self.name or ''}/ (git repository)"
+    
+    @property
+    def node_type(self) -> str:
+        """Git repository type identifier."""
+        return "GIT_REPOSITORY"
