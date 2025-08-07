@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from git import Repo
 from gitingest.config import DEFAULT_TIMEOUT
 from gitingest.utils.git_utils import (
     check_repo_exists,
     checkout_partial_clone,
     create_git_auth_header,
-    create_git_command,
+    create_git_command_with_auth,
     ensure_git_installed,
     is_github_host,
     resolve_commit,
-    run_command,
 )
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.os_utils import ensure_directory_exists_or_create
@@ -83,20 +84,38 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     commit = await resolve_commit(config, token=token)
     logger.debug("Resolved commit", extra={"commit": commit})
 
-    clone_cmd = ["git"]
-    if token and is_github_host(url):
-        clone_cmd += ["-c", create_git_auth_header(token, url=url)]
+    def perform_clone():
+        """Perform the git clone operation using GitPython."""
+        try:
+            # Set up clone options
+            clone_kwargs = {
+                "single_branch": True,
+                "depth": 1,
+                "no_checkout": True,
+            }
 
-    clone_cmd += ["clone", "--single-branch", "--no-checkout", "--depth=1"]
-    if partial_clone:
-        clone_cmd += ["--filter=blob:none", "--sparse"]
+            # Add authentication for GitHub repositories
+            env = None
+            if token and is_github_host(url):
+                import os
+                env = os.environ.copy()
+                env["GIT_CONFIG_PARAMETERS"] = create_git_auth_header(token, url=url)
 
-    clone_cmd += [url, local_path]
+            # Add filter and sparse options for partial clones
+            if partial_clone:
+                clone_kwargs["multi_options"] = ["--filter=blob:none", "--sparse"]
 
-    # Clone the repository
-    logger.info("Executing git clone command", extra={"command": " ".join([*clone_cmd[:-1], "<url>", local_path])})
-    await run_command(*clone_cmd)
-    logger.info("Git clone completed successfully")
+            # Clone the repository
+            logger.info("Executing git clone command")
+            repo = Repo.clone_from(url, local_path, env=env, **clone_kwargs)
+            logger.info("Git clone completed successfully")
+            return repo
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to clone repository: {str(e)}") from e
+
+    # Perform the clone operation
+    repo = await asyncio.get_event_loop().run_in_executor(None, perform_clone)
 
     # Checkout the subpath if it is a partial clone
     if partial_clone:
@@ -104,20 +123,34 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
         await checkout_partial_clone(config, token=token)
         logger.debug("Partial clone setup completed")
 
-    git = create_git_command(["git"], local_path, url, token)
+    def perform_checkout():
+        """Perform the checkout operations using GitPython."""
+        try:
+            # Fetch the specific commit
+            logger.debug("Fetching specific commit", extra={"commit": commit})
+            
+            # Set up authentication for fetch operations
+            if token and is_github_host(url):
+                git_cmd = repo.git.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=url))
+            else:
+                git_cmd = repo.git
 
-    # Ensure the commit is locally available
-    logger.debug("Fetching specific commit", extra={"commit": commit})
-    await run_command(*git, "fetch", "--depth=1", "origin", commit)
+            git_cmd.fetch("--depth=1", "origin", commit)
 
-    # Write the work-tree at that commit
-    logger.info("Checking out commit", extra={"commit": commit})
-    await run_command(*git, "checkout", commit)
+            # Checkout the specific commit
+            logger.info("Checking out commit", extra={"commit": commit})
+            repo.git.checkout(commit)
 
-    # Update submodules
-    if config.include_submodules:
-        logger.info("Updating submodules")
-        await run_command(*git, "submodule", "update", "--init", "--recursive", "--depth=1")
-        logger.debug("Submodules updated successfully")
+            # Update submodules if requested
+            if config.include_submodules:
+                logger.info("Updating submodules")
+                repo.git.submodule("update", "--init", "--recursive", "--depth=1")
+                logger.debug("Submodules updated successfully")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed during checkout operations: {str(e)}") from e
+
+    # Perform checkout operations
+    await asyncio.get_event_loop().run_in_executor(None, perform_checkout)
 
     logger.info("Git clone operation completed successfully", extra={"local_path": local_path})

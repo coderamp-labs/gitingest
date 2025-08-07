@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Final, Iterable
 from urllib.parse import urlparse
 
 import httpx
+from git import Repo, Remote, GitCommandError, InvalidGitRepositoryError
+from git.cmd import Git
 from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.utils.compat_func import removesuffix
@@ -47,17 +49,19 @@ def is_github_host(url: str) -> bool:
     return hostname.startswith("github.")
 
 
-async def run_command(*args: str) -> tuple[bytes, bytes]:
-    """Execute a shell command asynchronously and return (stdout, stderr) bytes.
+async def run_git_command(*args: str, cwd: str | None = None) -> tuple[str, str]:
+    """Execute a git command using GitPython and return (stdout, stderr) strings.
 
     Parameters
     ----------
     *args : str
-        The command and its arguments to execute.
+        The git command arguments to execute (without the 'git' prefix).
+    cwd : str | None
+        The working directory to execute the command in.
 
     Returns
     -------
-    tuple[bytes, bytes]
+    tuple[str, str]
         A tuple containing the stdout and stderr of the command.
 
     Raises
@@ -66,18 +70,32 @@ async def run_command(*args: str) -> tuple[bytes, bytes]:
         If command exits with a non-zero status.
 
     """
-    # Execute the requested command
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        msg = f"Command failed: {' '.join(args)}\nError: {stderr.decode().strip()}"
-        raise RuntimeError(msg)
+    try:
+        def run_sync():
+            git_cmd = Git(cwd or ".")
+            # Handle different git operations
+            if args[0] == "--version":
+                return git_cmd.version(), ""
+            elif args[0] == "config" and len(args) >= 2:
+                try:
+                    result = git_cmd.config(args[1])
+                    return result, ""
+                except GitCommandError as e:
+                    return "", str(e)
+            else:
+                # For other commands, use the raw execute method
+                result = git_cmd.execute(list(args))
+                return result, ""
 
-    return stdout, stderr
+        # Run the synchronous git operation in a thread pool
+        stdout, stderr = await asyncio.get_event_loop().run_in_executor(None, run_sync)
+        return stdout, stderr
+    except GitCommandError as exc:
+        msg = f"Git command failed: git {' '.join(args)}\nError: {exc.stderr or str(exc)}"
+        raise RuntimeError(msg) from exc
+    except Exception as exc:
+        msg = f"Git command failed: git {' '.join(args)}\nError: {str(exc)}"
+        raise RuntimeError(msg) from exc
 
 
 async def ensure_git_installed() -> None:
@@ -92,14 +110,14 @@ async def ensure_git_installed() -> None:
 
     """
     try:
-        await run_command("git", "--version")
+        await run_git_command("--version")
     except RuntimeError as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
     if sys.platform == "win32":
         try:
-            stdout, _ = await run_command("git", "config", "core.longpaths")
-            if stdout.decode().strip().lower() != "true":
+            stdout, _ = await run_git_command("config", "core.longpaths")
+            if stdout.strip().lower() != "true":
                 logger.warning(
                     "Git clone may fail on Windows due to long file paths. "
                     "Consider enabling long path support with: 'git config --global core.longpaths true'. "
@@ -222,61 +240,65 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
         msg = f"Invalid fetch type: {ref_type}"
         raise ValueError(msg)
 
-    cmd = ["git"]
-
-    # Add authentication if needed
-    if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
-
-    cmd += ["ls-remote"]
-
-    fetch_tags = ref_type == "tags"
-    to_fetch = "tags" if fetch_tags else "heads"
-
-    cmd += [f"--{to_fetch}"]
-
-    # `--refs` filters out the peeled tag objects (those ending with "^{}") (for tags)
-    if fetch_tags:
-        cmd += ["--refs"]
-
-    cmd += [url]
-
     await ensure_git_installed()
-    stdout, _ = await run_command(*cmd)
+
+    def fetch_refs():
+        git_cmd = Git()
+        
+        # Set up authentication if needed
+        if token and is_github_host(url):
+            git_cmd = git_cmd.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=url))
+
+        fetch_tags = ref_type == "tags"
+        to_fetch = "tags" if fetch_tags else "heads"
+
+        cmd = ["ls-remote", f"--{to_fetch}"]
+        
+        # `--refs` filters out the peeled tag objects (those ending with "^{}") (for tags)
+        if fetch_tags:
+            cmd.append("--refs")
+
+        cmd.append(url)
+        
+        try:
+            result = git_cmd.execute(cmd)
+            return result
+        except GitCommandError as e:
+            raise RuntimeError(f"Failed to fetch {ref_type}: {e.stderr or str(e)}") from e
+
+    stdout = await asyncio.get_event_loop().run_in_executor(None, fetch_refs)
+    
     # For each line in the output:
     # - Skip empty lines and lines that don't contain "refs/{to_fetch}/"
     # - Extract the branch or tag name after "refs/{to_fetch}/"
     return [
         line.split(f"refs/{to_fetch}/", 1)[1]
-        for line in stdout.decode().splitlines()
+        for line in stdout.splitlines()
         if line.strip() and f"refs/{to_fetch}/" in line
     ]
 
 
-def create_git_command(base_cmd: list[str], local_path: str, url: str, token: str | None = None) -> list[str]:
-    """Create a git command with authentication if needed.
+def create_git_command_with_auth(token: str | None, url: str) -> Git:
+    """Create a Git command object with authentication if needed.
 
     Parameters
     ----------
-    base_cmd : list[str]
-        The base git command to start with.
-    local_path : str
-        The local path where the git command should be executed.
-    url : str
-        The repository URL to check if it's a GitHub repository.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
+    url : str
+        The repository URL to check if it's a GitHub repository.
 
     Returns
     -------
-    list[str]
-        The git command with authentication if needed.
+    Git
+        A Git command object with authentication configured if needed.
 
     """
-    cmd = [*base_cmd, "-C", local_path]
     if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
-    return cmd
+        # Set authentication through environment
+        auth_config = create_git_auth_header(token, url=url)
+        return Git().with_custom_environment(GIT_CONFIG_PARAMETERS=auth_config)
+    return Git()
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -343,8 +365,21 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     if config.blob:
         # Remove the file name from the subpath when ingesting from a file url (e.g. blob/branch/path/file.txt)
         subpath = str(Path(subpath).parent.as_posix())
-    checkout_cmd = create_git_command(["git"], config.local_path, config.url, token)
-    await run_command(*checkout_cmd, "sparse-checkout", "set", subpath)
+
+    def setup_sparse_checkout():
+        try:
+            repo = Repo(config.local_path)
+            git_cmd = repo.git
+            
+            # Set up authentication if needed
+            if token and is_github_host(config.url):
+                git_cmd = git_cmd.with_custom_environment(GIT_CONFIG_PARAMETERS=create_git_auth_header(token, url=config.url))
+            
+            git_cmd.execute(["sparse-checkout", "set", subpath])
+        except Exception as e:
+            raise RuntimeError(f"Failed to setup sparse checkout: {str(e)}") from e
+
+    await asyncio.get_event_loop().run_in_executor(None, setup_sparse_checkout)
 
 
 async def resolve_commit(config: CloneConfig, token: str | None) -> str:
@@ -400,14 +435,16 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
         If the ref does not exist in the remote repository.
 
     """
-    # Build: git [-c http.<host>/.extraheader=Auth...] ls-remote <url> <pattern>
-    cmd: list[str] = ["git"]
-    if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
+    def resolve_ref():
+        git_cmd = create_git_command_with_auth(token, url)
+        try:
+            result = git_cmd.execute(["ls-remote", url, pattern])
+            return result
+        except GitCommandError as e:
+            raise RuntimeError(f"Failed to resolve ref {pattern}: {e.stderr or str(e)}") from e
 
-    cmd += ["ls-remote", url, pattern]
-    stdout, _ = await run_command(*cmd)
-    lines = stdout.decode().splitlines()
+    stdout = await asyncio.get_event_loop().run_in_executor(None, resolve_ref)
+    lines = stdout.splitlines()
     sha = _pick_commit_sha(lines)
     if not sha:
         msg = f"{pattern!r} not found in {url}"
