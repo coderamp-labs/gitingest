@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import requests.exceptions
 import tiktoken
 
-from gitingest.schemas import FileSystemNode, FileSystemNodeType
-from gitingest.utils.compat_func import readlink
+from gitingest.schemas import FileSystemDirectory, FileSystemFile, FileSystemNode, FileSystemSymlink
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -42,12 +41,12 @@ def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, 
         A tuple containing the summary, directory structure, and file contents.
 
     """
-    is_single_file = node.type == FileSystemNodeType.FILE
+    is_single_file = isinstance(node, FileSystemFile)
     summary = _create_summary_prefix(query, single_file=is_single_file)
 
-    if node.type == FileSystemNodeType.DIRECTORY:
+    if isinstance(node, FileSystemDirectory):
         summary += f"Files analyzed: {node.file_count}\n"
-    elif node.type == FileSystemNodeType.FILE:
+    elif isinstance(node, FileSystemFile):
         summary += f"File: {node.name}\n"
         summary += f"Lines: {len(node.content.splitlines()):,}\n"
 
@@ -119,7 +118,7 @@ def _gather_file_contents(node: FileSystemNode) -> str:
         The concatenated content of all files under the given node.
 
     """
-    if node.type != FileSystemNodeType.DIRECTORY:
+    if not isinstance(node, FileSystemDirectory):
         return node.content_string
 
     # Recursively gather contents of all files under the current directory
@@ -164,14 +163,14 @@ def _create_tree_structure(
 
     # Indicate directories with a trailing slash
     display_name = node.name
-    if node.type == FileSystemNodeType.DIRECTORY:
+    if isinstance(node, FileSystemDirectory):
         display_name += "/"
-    elif node.type == FileSystemNodeType.SYMLINK:
-        display_name += " -> " + readlink(node.path).name
+    elif isinstance(node, FileSystemSymlink):
+        display_name += " -> " + node.target
 
     tree_str += f"{prefix}{current_prefix}{display_name}\n"
 
-    if node.type == FileSystemNodeType.DIRECTORY and node.children:
+    if isinstance(node, FileSystemDirectory) and node.children:
         prefix += "    " if is_last else "│   "
         for i, child in enumerate(node.children):
             tree_str += _create_tree_structure(query, node=child, prefix=prefix, is_last=i == len(node.children) - 1)
