@@ -96,6 +96,26 @@ class FileSystemNode(Source):  # pylint: disable=too-many-instance-attributes
         except Exception as e:
             return f"Error reading content of {self.name}: {e}"
 
+    def get_summary_info(self) -> str:
+        """Return summary information. Override in subclasses."""
+        return ""
+
+    def is_single_file(self) -> bool:
+        """Return whether this node represents a single file."""
+        return False
+
+    def gather_contents(self) -> str:
+        """Gather file contents. Override in subclasses."""
+        return self.content_string
+
+    def get_display_name(self) -> str:
+        """Get display name for tree view. Override in subclasses."""
+        return self.name
+
+    def has_children(self) -> bool:
+        """Return whether this node has children to display."""
+        return False
+
     @property
     def content(self) -> str:
         """Return file content (simplified version for backward compatibility)."""
@@ -109,6 +129,14 @@ class FileSystemFile(FileSystemNode):
     def get_sort_priority(self) -> int:
         """Files have priority 0 for sorting."""
         return 0
+
+    def get_summary_info(self) -> str:
+        """Return file summary information."""
+        return f"File: {self.name}\nLines: {len(self.content.splitlines()):,}\n"
+
+    def is_single_file(self) -> bool:
+        """Files are single files."""
+        return True
 
     def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
         """Render the tree representation of this file."""
@@ -126,6 +154,22 @@ class FileSystemDirectory(FileSystemNode):
         """Directories cannot have content."""
         msg = "Cannot read content of a directory node"
         raise ValueError(msg)
+
+    def get_summary_info(self) -> str:
+        """Return directory summary information."""
+        return f"Files analyzed: {self.file_count}\n"
+
+    def gather_contents(self) -> str:
+        """Recursively gather contents of all files under this directory."""
+        return "\n".join(child.gather_contents() for child in self.children)
+
+    def get_display_name(self) -> str:
+        """Directories get a trailing slash."""
+        return self.name + "/"
+
+    def has_children(self) -> bool:
+        """Directories have children if the list is not empty."""
+        return bool(self.children)
 
     def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
         """Render the tree representation of this directory."""
@@ -177,6 +221,10 @@ class FileSystemSymlink(FileSystemNode):
     def get_content(self) -> str:
         """Symlinks content is what they point to."""
         return self.target
+
+    def get_display_name(self) -> str:
+        """Symlinks show target."""
+        return f"{self.name} -> {self.target}"
 
     def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
         """Render the tree representation of this symlink."""

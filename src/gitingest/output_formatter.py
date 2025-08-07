@@ -41,14 +41,9 @@ def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, 
         A tuple containing the summary, directory structure, and file contents.
 
     """
-    is_single_file = isinstance(node, FileSystemFile)
+    is_single_file = node.is_single_file()
     summary = _create_summary_prefix(query, single_file=is_single_file)
-
-    if isinstance(node, FileSystemDirectory):
-        summary += f"Files analyzed: {node.file_count}\n"
-    elif isinstance(node, FileSystemFile):
-        summary += f"File: {node.name}\n"
-        summary += f"Lines: {len(node.content.splitlines()):,}\n"
+    summary += node.get_summary_info()
 
     tree = "Directory structure:\n" + _create_tree_structure(query, node=node)
 
@@ -118,11 +113,7 @@ def _gather_file_contents(node: FileSystemNode) -> str:
         The concatenated content of all files under the given node.
 
     """
-    if not isinstance(node, FileSystemDirectory):
-        return node.content_string
-
-    # Recursively gather contents of all files under the current directory
-    return "\n".join(_gather_file_contents(child) for child in node.children)
+    return node.gather_contents()
 
 
 def _create_tree_structure(
@@ -161,16 +152,11 @@ def _create_tree_structure(
     tree_str = ""
     current_prefix = "└── " if is_last else "├── "
 
-    # Indicate directories with a trailing slash
-    display_name = node.name
-    if isinstance(node, FileSystemDirectory):
-        display_name += "/"
-    elif isinstance(node, FileSystemSymlink):
-        display_name += " -> " + node.target
-
+    # Get the display name (handles directory slash, symlink target, etc.)
+    display_name = node.get_display_name()
     tree_str += f"{prefix}{current_prefix}{display_name}\n"
 
-    if isinstance(node, FileSystemDirectory) and node.children:
+    if node.has_children():
         prefix += "    " if is_last else "│   "
         for i, child in enumerate(node.children):
             tree_str += _create_tree_structure(query, node=child, prefix=prefix, is_last=i == len(node.children) - 1)
