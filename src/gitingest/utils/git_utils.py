@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Final, Generator, Iterable
 from urllib.parse import urlparse, urlunparse
 
 import git
+import httpx
+from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
@@ -96,18 +98,17 @@ async def ensure_git_installed() -> None:
     """
     try:
         # Use GitPython to check git availability
-        git_cmd = git.Git()
-        git_cmd.version()
+        git.Git().version()
     except git.GitCommandError as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
     except Exception as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
-
+        
     if sys.platform == "win32":
         try:
-            longpaths_value = git_cmd.config("core.longpaths")
+            longpaths_value = git.Git().config("core.longpaths")
             if longpaths_value.lower() != "true":
                 logger.warning(
                     "Git clone may fail on Windows due to long file paths. "
@@ -214,24 +215,29 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
         raise ValueError(msg)
 
     await ensure_git_installed()
-
+    
     # Use GitPython to get remote references
     try:
+        git_cmd = git.Git()
+        
+        # Prepare environment with authentication if needed
+        env = None
+        if token and is_github_host(url):
+            auth_url = _add_token_to_url(url, token)
+            url = auth_url
+        
         fetch_tags = ref_type == "tags"
         to_fetch = "tags" if fetch_tags else "heads"
-
+        
         # Build ls-remote command
-        cmd_args = [f"--{to_fetch}"]
+        cmd_args = ["ls-remote", f"--{to_fetch}"]
         if fetch_tags:
             cmd_args.append("--refs")  # Filter out peeled tag objects
         cmd_args.append(url)
-
-        # Run the command with proper authentication
-        with git_auth_context(url, token) as (git_cmd, auth_url):
-            # Replace the URL in cmd_args with the authenticated URL
-            cmd_args[-1] = auth_url  # URL is the last argument
-            output = git_cmd.ls_remote(*cmd_args)
-
+        
+        # Run the command
+        output = git_cmd.execute(cmd_args, env=env)
+        
         # Parse output
         return [
             line.split(f"refs/{to_fetch}/", 1)[1]
@@ -260,27 +266,21 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
     git.Repo
         A GitPython Repo object configured with authentication.
 
-    Raises
-    ------
-    ValueError
-        If the local path is not a valid git repository.
-
     """
     try:
         repo = git.Repo(local_path)
-
+        
         # Configure authentication if needed
         if token and is_github_host(url):
             auth_header = create_git_auth_header(token, url=url)
             # Set the auth header in git config for this repo
-            key, value = auth_header.split("=", 1)
+            key, value = auth_header.split('=', 1)
             repo.git.config(key, value)
-
+        
+        return repo
     except git.InvalidGitRepositoryError as exc:
         msg = f"Invalid git repository at {local_path}"
         raise ValueError(msg) from exc
-
-    return repo
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -416,10 +416,10 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     if config.blob:
         # Remove the file name from the subpath when ingesting from a file url (e.g. blob/branch/path/file.txt)
         subpath = str(Path(subpath).parent.as_posix())
-
+    
     try:
         repo = create_git_repo(config.local_path, config.url, token)
-        repo.git.sparse_checkout("set", subpath)
+        repo.git.execute(["sparse-checkout", "set", subpath])
     except git.GitCommandError as exc:
         msg = f"Failed to configure sparse-checkout: {exc}"
         raise RuntimeError(msg) from exc
@@ -479,21 +479,26 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
 
     """
     try:
-        # Execute ls-remote command with proper authentication
-        with git_auth_context(url, token) as (git_cmd, auth_url):
-            output = git_cmd.ls_remote(auth_url, pattern)
+        git_cmd = git.Git()
+        
+        # Prepare authentication if needed
+        auth_url = url
+        if token and is_github_host(url):
+            auth_url = _add_token_to_url(url, token)
+        
+        # Execute ls-remote command
+        output = git_cmd.execute(["ls-remote", auth_url, pattern])
         lines = output.splitlines()
-
+        
         sha = _pick_commit_sha(lines)
         if not sha:
             msg = f"{pattern!r} not found in {url}"
             raise ValueError(msg)
 
+        return sha
     except git.GitCommandError as exc:
-        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
+        msg = f"Failed to resolve {pattern} in {url}: {exc}"
         raise ValueError(msg) from exc
-
-    return sha
 
 
 def _pick_commit_sha(lines: Iterable[str]) -> str | None:
@@ -529,3 +534,37 @@ def _pick_commit_sha(lines: Iterable[str]) -> str | None:
             first_non_peeled = sha
 
     return first_non_peeled  # branch or lightweight tag (or None)
+
+
+def _add_token_to_url(url: str, token: str) -> str:
+    """Add authentication token to GitHub URL.
+
+    Parameters
+    ----------
+    url : str
+        The original GitHub URL.
+    token : str
+        The GitHub token to add.
+
+    Returns
+    -------
+    str
+        The URL with embedded authentication.
+
+    """
+    from urllib.parse import urlparse, urlunparse
+    
+    parsed = urlparse(url)
+    # Add token as username in URL (GitHub supports this)
+    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    
+    return urlunparse((
+        parsed.scheme,
+        netloc,
+        parsed.path,
+        parsed.params,
+        parsed.query,
+        parsed.fragment
+    ))
