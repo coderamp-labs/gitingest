@@ -183,19 +183,20 @@ def stub_branches(mocker: MockerFixture) -> Callable[[list[str]], None]:
     """Return a function that stubs git branch discovery to *branches*."""
 
     def _factory(branches: list[str]) -> None:
-        stdout = (
-            "\n".join(f"{DEMO_COMMIT[:12]}{i:02d}\trefs/heads/{b}" for i, b in enumerate(branches)).encode() + b"\n"
-        )
-        mocker.patch(
-            "gitingest.utils.git_utils.run_command",
-            new_callable=AsyncMock,
-            return_value=(stdout, b""),
-        )
+        # Patch the GitPython fetch function
         mocker.patch(
             "gitingest.utils.git_utils.fetch_remote_branches_or_tags",
             new_callable=AsyncMock,
             return_value=branches,
         )
+        
+        # Patch GitPython's ls_remote method to return the mocked output
+        ls_remote_output = "\n".join(f"{DEMO_COMMIT[:12]}{i:02d}\trefs/heads/{b}" for i, b in enumerate(branches))
+        mock_git_cmd = mocker.patch("git.Git")
+        mock_git_cmd.return_value.ls_remote.return_value = ls_remote_output
+        
+        # Also patch the git module imports in our utils
+        mocker.patch("gitingest.utils.git_utils.git.Git", return_value=mock_git_cmd.return_value)
 
     return _factory
 
