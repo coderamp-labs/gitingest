@@ -548,18 +548,20 @@ def _add_token_to_url(url: str, token: str) -> str:
 
     """
     from urllib.parse import urlparse, urlunparse
-    
+
     parsed = urlparse(url)
     # Add token as username in URL (GitHub supports this)
     netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
     if parsed.port:
         netloc += f":{parsed.port}"
-    
-    return urlunparse((
-        parsed.scheme,
-        netloc,
-        parsed.path,
-        parsed.params,
-        parsed.query,
-        parsed.fragment
-    ))
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )
