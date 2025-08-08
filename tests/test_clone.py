@@ -35,14 +35,13 @@ GIT_INSTALLED_CALLS = 2 if sys.platform == "win32" else 1
 
 
 @pytest.mark.asyncio
-async def test_clone_with_commit(repo_exists_true: AsyncMock, run_command_mock: AsyncMock) -> None:
+async def test_clone_with_commit(repo_exists_true: AsyncMock, gitpython_mocks: dict) -> None:
     """Test cloning a repository with a specific commit hash.
 
     Given a valid URL and a commit hash:
     When ``clone_repo`` is called,
     Then the repository should be cloned and checked out at that commit.
     """
-    expected_call_count = GIT_INSTALLED_CALLS + 3  # ensure_git_installed + clone + fetch + checkout
     commit_hash = "a" * 40  # Simulating a valid commit hash
     clone_config = CloneConfig(
         url=DEMO_URL,
@@ -54,8 +53,21 @@ async def test_clone_with_commit(repo_exists_true: AsyncMock, run_command_mock: 
     await clone_repo(clone_config)
 
     repo_exists_true.assert_any_call(clone_config.url, token=None)
-    assert_standard_calls(run_command_mock, clone_config, commit=commit_hash)
-    assert run_command_mock.call_count == expected_call_count
+    
+    # Verify GitPython calls were made
+    mock_git_cmd = gitpython_mocks["git_cmd"]
+    mock_repo = gitpython_mocks["repo"]
+    mock_clone_from = gitpython_mocks["clone_from"]
+    
+    # Should have called version (for ensure_git_installed)
+    mock_git_cmd.version.assert_called()
+    
+    # Should have called clone_from (since partial_clone=False)
+    mock_clone_from.assert_called_once()
+    
+    # Should have called fetch and checkout on the repo
+    mock_repo.git.fetch.assert_called()
+    mock_repo.git.checkout.assert_called_with(commit_hash)
 
 
 @pytest.mark.asyncio

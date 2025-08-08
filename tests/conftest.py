@@ -235,6 +235,8 @@ def _setup_gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
     mock_git_cmd.version.return_value = "git version 2.34.1"
     mock_git_cmd.config.return_value = "true"
     mock_git_cmd.execute.return_value = f"{DEMO_COMMIT}\trefs/heads/main\n"
+    mock_git_cmd.ls_remote.return_value = f"{DEMO_COMMIT}\trefs/heads/main\n"
+    mock_git_cmd.clone.return_value = ""
     
     # Mock git.Repo class
     mock_repo = MagicMock()
@@ -244,6 +246,7 @@ def _setup_gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
     mock_repo.git.submodule = MagicMock()
     mock_repo.git.execute = MagicMock()
     mock_repo.git.config = MagicMock()
+    mock_repo.git.sparse_checkout = MagicMock()
     
     # Mock git.Repo.clone_from
     mock_clone_from = MagicMock(return_value=mock_repo)

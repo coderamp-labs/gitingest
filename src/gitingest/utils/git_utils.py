@@ -368,7 +368,7 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
 
     try:
         repo = create_git_repo(config.local_path, config.url, token)
-        repo.git.execute(["sparse-checkout", "set", subpath])
+        repo.git.sparse_checkout("set", subpath)
     except git.GitCommandError as exc:
         msg = f"Failed to configure sparse-checkout: {exc}"
         raise RuntimeError(msg) from exc

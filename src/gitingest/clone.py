@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gitingest.config import DEFAULT_TIMEOUT
 import git
+
+from gitingest.config import DEFAULT_TIMEOUT
 from gitingest.utils.git_utils import (
     _add_token_to_url,
     check_repo_exists,
     checkout_partial_clone,
-    create_git_auth_header,
     create_git_repo,
     ensure_git_installed,
     is_github_host,
@@ -97,19 +97,19 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
             "no_checkout": True,
             "depth": 1,
         }
-        
+
         if partial_clone:
             # GitPython doesn't directly support --filter and --sparse in clone
             # We'll need to use git.Git() for the initial clone with these options
             git_cmd = git.Git()
-            cmd_args = ["clone", "--single-branch", "--no-checkout", "--depth=1"]
+            cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
             if partial_clone:
                 cmd_args.extend(["--filter=blob:none", "--sparse"])
             cmd_args.extend([clone_url, local_path])
-            git_cmd.execute(cmd_args)
+            git_cmd.clone(*cmd_args)
         else:
             git.Repo.clone_from(clone_url, local_path, **clone_kwargs)
-            
+
         logger.info("Git clone completed successfully")
     except git.GitCommandError as exc:
         msg = f"Git clone failed: {exc}"
@@ -124,7 +124,7 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     # Create repo object and perform operations
     try:
         repo = create_git_repo(local_path, url, token)
-        
+
         # Ensure the commit is locally available
         logger.debug("Fetching specific commit", extra={"commit": commit})
         repo.git.fetch("--depth=1", "origin", commit)
