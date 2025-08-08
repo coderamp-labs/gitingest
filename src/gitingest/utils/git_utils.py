@@ -98,17 +98,18 @@ async def ensure_git_installed() -> None:
     """
     try:
         # Use GitPython to check git availability
-        git.Git().version()
+        git_cmd = git.Git()
+        git_cmd.version()
     except git.GitCommandError as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
     except Exception as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
-        
+
     if sys.platform == "win32":
         try:
-            longpaths_value = git.Git().config("core.longpaths")
+            longpaths_value = git_cmd.config("core.longpaths")
             if longpaths_value.lower() != "true":
                 logger.warning(
                     "Git clone may fail on Windows due to long file paths. "
@@ -215,29 +216,29 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
         raise ValueError(msg)
 
     await ensure_git_installed()
-    
+
     # Use GitPython to get remote references
     try:
         git_cmd = git.Git()
-        
+
         # Prepare environment with authentication if needed
         env = None
         if token and is_github_host(url):
             auth_url = _add_token_to_url(url, token)
             url = auth_url
-        
+
         fetch_tags = ref_type == "tags"
         to_fetch = "tags" if fetch_tags else "heads"
-        
+
         # Build ls-remote command
-        cmd_args = ["ls-remote", f"--{to_fetch}"]
+        cmd_args = [f"--{to_fetch}"]
         if fetch_tags:
             cmd_args.append("--refs")  # Filter out peeled tag objects
         cmd_args.append(url)
-        
-        # Run the command
-        output = git_cmd.execute(cmd_args, env=env)
-        
+
+        # Run the command using git_cmd.ls_remote() method
+        output = git_cmd.ls_remote(*cmd_args)
+
         # Parse output
         return [
             line.split(f"refs/{to_fetch}/", 1)[1]
@@ -269,14 +270,14 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
     """
     try:
         repo = git.Repo(local_path)
-        
+
         # Configure authentication if needed
         if token and is_github_host(url):
             auth_header = create_git_auth_header(token, url=url)
             # Set the auth header in git config for this repo
-            key, value = auth_header.split('=', 1)
+            key, value = auth_header.split("=", 1)
             repo.git.config(key, value)
-        
+
         return repo
     except git.InvalidGitRepositoryError as exc:
         msg = f"Invalid git repository at {local_path}"
@@ -416,7 +417,7 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     if config.blob:
         # Remove the file name from the subpath when ingesting from a file url (e.g. blob/branch/path/file.txt)
         subpath = str(Path(subpath).parent.as_posix())
-    
+
     try:
         repo = create_git_repo(config.local_path, config.url, token)
         repo.git.execute(["sparse-checkout", "set", subpath])
@@ -480,16 +481,16 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
     """
     try:
         git_cmd = git.Git()
-        
+
         # Prepare authentication if needed
         auth_url = url
         if token and is_github_host(url):
             auth_url = _add_token_to_url(url, token)
-        
+
         # Execute ls-remote command
-        output = git_cmd.execute(["ls-remote", auth_url, pattern])
+        output = git_cmd.ls_remote(auth_url, pattern)
         lines = output.splitlines()
-        
+
         sha = _pick_commit_sha(lines)
         if not sha:
             msg = f"{pattern!r} not found in {url}"
@@ -553,18 +554,20 @@ def _add_token_to_url(url: str, token: str) -> str:
 
     """
     from urllib.parse import urlparse, urlunparse
-    
+
     parsed = urlparse(url)
     # Add token as username in URL (GitHub supports this)
     netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
     if parsed.port:
         netloc += f":{parsed.port}"
-    
-    return urlunparse((
-        parsed.scheme,
-        netloc,
-        parsed.path,
-        parsed.params,
-        parsed.query,
-        parsed.fragment
-    ))
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )
