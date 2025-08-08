@@ -529,3 +529,37 @@ def _pick_commit_sha(lines: Iterable[str]) -> str | None:
             first_non_peeled = sha
 
     return first_non_peeled  # branch or lightweight tag (or None)
+
+
+def _add_token_to_url(url: str, token: str) -> str:
+    """Add authentication token to GitHub URL.
+
+    Parameters
+    ----------
+    url : str
+        The original GitHub URL.
+    token : str
+        The GitHub token to add.
+
+    Returns
+    -------
+    str
+        The URL with embedded authentication.
+
+    """
+    from urllib.parse import urlparse, urlunparse
+    
+    parsed = urlparse(url)
+    # Add token as username in URL (GitHub supports this)
+    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    
+    return urlunparse((
+        parsed.scheme,
+        netloc,
+        parsed.path,
+        parsed.params,
+        parsed.query,
+        parsed.fragment
+    ))

@@ -9,6 +9,7 @@ import git
 
 from gitingest.config import DEFAULT_TIMEOUT
 from gitingest.utils.git_utils import (
+    _add_token_to_url,
     check_repo_exists,
     checkout_partial_clone,
     create_git_repo,
@@ -109,7 +110,6 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
             else:
                 # For non-authenticated repos, use the standard GitPython method
                 git.Repo.clone_from(url, local_path, **clone_kwargs)
-
         logger.info("Git clone completed successfully")
     except git.GitCommandError as exc:
         msg = f"Git clone failed: {exc}"
