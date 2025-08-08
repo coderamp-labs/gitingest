@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from gitingest.utils.git_utils import create_git_auth_header, create_git_command, is_github_host, validate_github_token
+from gitingest.utils.git_utils import create_git_auth_header, create_git_repo, is_github_host, validate_github_token
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -56,50 +56,51 @@ def test_validate_github_token_invalid(token: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("base_cmd", "local_path", "url", "token", "expected_suffix"),
+    ("local_path", "url", "token", "should_configure_auth"),
     [
         (
-            ["git", "clone"],
             "/some/path",
             "https://github.com/owner/repo.git",
             None,
-            [],  # No auth header expected when token is None
+            False,  # No auth configuration expected when token is None
         ),
         (
-            ["git", "clone"],
             "/some/path",
             "https://github.com/owner/repo.git",
             "ghp_" + "d" * 36,
-            [
-                "-c",
-                create_git_auth_header("ghp_" + "d" * 36),
-            ],  # Auth header expected for GitHub URL + token
+            True,  # Auth configuration expected for GitHub URL + token
         ),
         (
-            ["git", "clone"],
             "/some/path",
             "https://gitlab.com/owner/repo.git",
             "ghp_" + "e" * 36,
-            [],  # No auth header for non-GitHub URL even if token provided
+            False,  # No auth configuration for non-GitHub URL even if token provided
         ),
     ],
 )
-def test_create_git_command(
-    base_cmd: list[str],
+def test_create_git_repo(
     local_path: str,
     url: str,
     token: str | None,
-    expected_suffix: list[str],
+    should_configure_auth: bool,
+    mocker: MockerFixture,
 ) -> None:
-    """Test that ``create_git_command`` builds the correct command list based on inputs."""
-    cmd = create_git_command(base_cmd, local_path, url, token)
-
-    # The command should start with base_cmd and the -C option
-    expected_prefix = [*base_cmd, "-C", local_path]
-    assert cmd[: len(expected_prefix)] == expected_prefix
-
-    # The suffix (anything after prefix) should match expected
-    assert cmd[len(expected_prefix) :] == expected_suffix
+    """Test that ``create_git_repo`` creates a proper Git repo object."""
+    # Mock git.Repo to avoid actual filesystem operations
+    mock_repo = mocker.MagicMock()
+    mock_repo_class = mocker.patch("git.Repo", return_value=mock_repo)
+    
+    repo = create_git_repo(local_path, url, token)
+    
+    # Should create repo with correct path
+    mock_repo_class.assert_called_once_with(local_path)
+    assert repo == mock_repo
+    
+    # Check auth configuration
+    if should_configure_auth:
+        mock_repo.git.config.assert_called_once()
+    else:
+        mock_repo.git.config.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -125,7 +126,7 @@ def test_create_git_auth_header(token: str) -> None:
         ("https://gitlab.com/foo/bar.git", "ghp_" + "g" * 36, False),
     ],
 )
-def test_create_git_command_helper_calls(
+def test_create_git_repo_helper_calls(
     mocker: MockerFixture,
     tmp_path: Path,
     *,
@@ -135,16 +136,18 @@ def test_create_git_command_helper_calls(
 ) -> None:
     """Test that ``create_git_auth_header`` is invoked only when appropriate."""
     work_dir = tmp_path / "repo"
-    header_mock = mocker.patch("gitingest.utils.git_utils.create_git_auth_header", return_value="HEADER")
+    header_mock = mocker.patch("gitingest.utils.git_utils.create_git_auth_header", return_value="key=value")
+    mock_repo = mocker.MagicMock()
+    mocker.patch("git.Repo", return_value=mock_repo)
 
-    cmd = create_git_command(["git", "clone"], str(work_dir), url, token)
+    repo = create_git_repo(str(work_dir), url, token)
 
     if should_call:
         header_mock.assert_called_once_with(token, url=url)
-        assert "HEADER" in cmd
+        mock_repo.git.config.assert_called_once_with("key", "value")
     else:
         header_mock.assert_not_called()
-        assert "HEADER" not in cmd
+        mock_repo.git.config.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -198,11 +201,10 @@ def test_create_git_auth_header_with_ghe_url(token: str, url: str, expected_host
 
 
 @pytest.mark.parametrize(
-    ("base_cmd", "local_path", "url", "token", "expected_auth_hostname"),
+    ("local_path", "url", "token", "expected_auth_hostname"),
     [
         # GitHub.com URLs - should use default hostname
         (
-            ["git", "clone"],
             "/some/path",
             "https://github.com/owner/repo.git",
             "ghp_" + "a" * 36,
@@ -210,21 +212,18 @@ def test_create_git_auth_header_with_ghe_url(token: str, url: str, expected_host
         ),
         # GitHub Enterprise URLs - should use custom hostname
         (
-            ["git", "clone"],
             "/some/path",
             "https://github.company.com/owner/repo.git",
             "ghp_" + "b" * 36,
             "github.company.com",
         ),
         (
-            ["git", "clone"],
             "/some/path",
             "https://github.enterprise.org/owner/repo.git",
             "ghp_" + "c" * 36,
             "github.enterprise.org",
         ),
         (
-            ["git", "clone"],
             "/some/path",
             "http://github.internal/owner/repo.git",
             "ghp_" + "d" * 36,
@@ -232,48 +231,47 @@ def test_create_git_auth_header_with_ghe_url(token: str, url: str, expected_host
         ),
     ],
 )
-def test_create_git_command_with_ghe_urls(
-    base_cmd: list[str],
+def test_create_git_repo_with_ghe_urls(
     local_path: str,
     url: str,
     token: str,
     expected_auth_hostname: str,
+    mocker: MockerFixture,
 ) -> None:
-    """Test that ``create_git_command`` handles GitHub Enterprise URLs correctly."""
-    cmd = create_git_command(base_cmd, local_path, url, token)
+    """Test that ``create_git_repo`` handles GitHub Enterprise URLs correctly."""
+    mock_repo = mocker.MagicMock()
+    mocker.patch("git.Repo", return_value=mock_repo)
+    
+    repo = create_git_repo(local_path, url, token)
 
-    # Should have base command and -C option
-    expected_prefix = [*base_cmd, "-C", local_path]
-    assert cmd[: len(expected_prefix)] == expected_prefix
-
-    # Should have -c and auth header
-    assert "-c" in cmd
-    auth_header_index = cmd.index("-c") + 1
-    auth_header = cmd[auth_header_index]
-
-    # Verify the auth header contains the expected hostname
-    assert f"http.https://{expected_auth_hostname}/" in auth_header
-    assert "Authorization: Basic" in auth_header
+    # Should configure auth with the correct hostname
+    mock_repo.git.config.assert_called_once()
+    auth_config_call = mock_repo.git.config.call_args[0]
+    
+    # The first argument should contain the hostname
+    assert expected_auth_hostname in auth_config_call[0]
 
 
 @pytest.mark.parametrize(
-    ("base_cmd", "local_path", "url", "token"),
+    ("local_path", "url", "token"),
     [
-        # Should NOT add auth headers for non-GitHub URLs
-        (["git", "clone"], "/some/path", "https://gitlab.com/owner/repo.git", "ghp_" + "a" * 36),
-        (["git", "clone"], "/some/path", "https://bitbucket.org/owner/repo.git", "ghp_" + "b" * 36),
-        (["git", "clone"], "/some/path", "https://git.example.com/owner/repo.git", "ghp_" + "c" * 36),
+        # Should NOT configure auth for non-GitHub URLs
+        ("/some/path", "https://gitlab.com/owner/repo.git", "ghp_" + "a" * 36),
+        ("/some/path", "https://bitbucket.org/owner/repo.git", "ghp_" + "b" * 36),
+        ("/some/path", "https://git.example.com/owner/repo.git", "ghp_" + "c" * 36),
     ],
 )
-def test_create_git_command_ignores_non_github_urls(
-    base_cmd: list[str],
+def test_create_git_repo_ignores_non_github_urls(
     local_path: str,
     url: str,
     token: str,
+    mocker: MockerFixture,
 ) -> None:
-    """Test that ``create_git_command`` does not add auth headers for non-GitHub URLs."""
-    cmd = create_git_command(base_cmd, local_path, url, token)
+    """Test that ``create_git_repo`` does not configure auth for non-GitHub URLs."""
+    mock_repo = mocker.MagicMock()
+    mocker.patch("git.Repo", return_value=mock_repo)
+    
+    repo = create_git_repo(local_path, url, token)
 
-    # Should only have base command and -C option, no auth headers
-    expected = [*base_cmd, "-C", local_path]
-    assert cmd == expected
+    # Should not configure auth for non-GitHub URLs
+    mock_repo.git.config.assert_not_called()

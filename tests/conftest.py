@@ -11,7 +11,7 @@ import sys
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -215,8 +215,57 @@ def run_command_mock(mocker: MockerFixture) -> AsyncMock:
     """
     mock = AsyncMock(side_effect=_fake_run_command)
     mocker.patch("gitingest.utils.git_utils.run_command", mock)
-    mocker.patch("gitingest.clone.run_command", mock)
+    
+    # Mock GitPython components
+    _setup_gitpython_mocks(mocker)
+    
     return mock
+
+
+@pytest.fixture
+def gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
+    """Provide comprehensive GitPython mocks for testing."""
+    return _setup_gitpython_mocks(mocker)
+
+
+def _setup_gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
+    """Set up comprehensive GitPython mocks."""
+    # Mock git.Git class
+    mock_git_cmd = MagicMock()
+    mock_git_cmd.version.return_value = "git version 2.34.1"
+    mock_git_cmd.config.return_value = "true"
+    mock_git_cmd.execute.return_value = f"{DEMO_COMMIT}\trefs/heads/main\n"
+    
+    # Mock git.Repo class
+    mock_repo = MagicMock()
+    mock_repo.git = MagicMock()
+    mock_repo.git.fetch = MagicMock()
+    mock_repo.git.checkout = MagicMock()
+    mock_repo.git.submodule = MagicMock()
+    mock_repo.git.execute = MagicMock()
+    mock_repo.git.config = MagicMock()
+    
+    # Mock git.Repo.clone_from
+    mock_clone_from = MagicMock(return_value=mock_repo)
+    
+    git_git_mock = mocker.patch("git.Git", return_value=mock_git_cmd)
+    git_repo_mock = mocker.patch("git.Repo", return_value=mock_repo)
+    mocker.patch("git.Repo.clone_from", mock_clone_from)
+    
+    # Patch imports in our modules
+    mocker.patch("gitingest.utils.git_utils.git.Git", return_value=mock_git_cmd)
+    mocker.patch("gitingest.utils.git_utils.git.Repo", return_value=mock_repo)
+    mocker.patch("gitingest.clone.git.Git", return_value=mock_git_cmd)
+    mocker.patch("gitingest.clone.git.Repo", return_value=mock_repo)
+    mocker.patch("gitingest.clone.git.Repo.clone_from", mock_clone_from)
+    
+    return {
+        "git_cmd": mock_git_cmd,
+        "repo": mock_repo,
+        "clone_from": mock_clone_from,
+        "git_git_mock": git_git_mock,
+        "git_repo_mock": git_repo_mock,
+    }
 
 
 async def _fake_run_command(*args: str) -> tuple[bytes, bytes]:

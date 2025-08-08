@@ -6,15 +6,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gitingest.config import DEFAULT_TIMEOUT
+import git
 from gitingest.utils.git_utils import (
+    _add_token_to_url,
     check_repo_exists,
     checkout_partial_clone,
     create_git_auth_header,
-    create_git_command,
+    create_git_repo,
     ensure_git_installed,
     is_github_host,
     resolve_commit,
-    run_command,
 )
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.os_utils import ensure_directory_exists_or_create
@@ -83,20 +84,36 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     commit = await resolve_commit(config, token=token)
     logger.debug("Resolved commit", extra={"commit": commit})
 
-    clone_cmd = ["git"]
+    # Prepare URL with authentication if needed
+    clone_url = url
     if token and is_github_host(url):
-        clone_cmd += ["-c", create_git_auth_header(token, url=url)]
+        clone_url = _add_token_to_url(url, token)
 
-    clone_cmd += ["clone", "--single-branch", "--no-checkout", "--depth=1"]
-    if partial_clone:
-        clone_cmd += ["--filter=blob:none", "--sparse"]
-
-    clone_cmd += [url, local_path]
-
-    # Clone the repository
-    logger.info("Executing git clone command", extra={"command": " ".join([*clone_cmd[:-1], "<url>", local_path])})
-    await run_command(*clone_cmd)
-    logger.info("Git clone completed successfully")
+    # Clone the repository using GitPython
+    logger.info("Executing git clone operation", extra={"url": "<redacted>", "local_path": local_path})
+    try:
+        clone_kwargs = {
+            "single_branch": True,
+            "no_checkout": True,
+            "depth": 1,
+        }
+        
+        if partial_clone:
+            # GitPython doesn't directly support --filter and --sparse in clone
+            # We'll need to use git.Git() for the initial clone with these options
+            git_cmd = git.Git()
+            cmd_args = ["clone", "--single-branch", "--no-checkout", "--depth=1"]
+            if partial_clone:
+                cmd_args.extend(["--filter=blob:none", "--sparse"])
+            cmd_args.extend([clone_url, local_path])
+            git_cmd.execute(cmd_args)
+        else:
+            git.Repo.clone_from(clone_url, local_path, **clone_kwargs)
+            
+        logger.info("Git clone completed successfully")
+    except git.GitCommandError as exc:
+        msg = f"Git clone failed: {exc}"
+        raise RuntimeError(msg) from exc
 
     # Checkout the subpath if it is a partial clone
     if partial_clone:
@@ -104,20 +121,25 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
         await checkout_partial_clone(config, token=token)
         logger.debug("Partial clone setup completed")
 
-    git = create_git_command(["git"], local_path, url, token)
+    # Create repo object and perform operations
+    try:
+        repo = create_git_repo(local_path, url, token)
+        
+        # Ensure the commit is locally available
+        logger.debug("Fetching specific commit", extra={"commit": commit})
+        repo.git.fetch("--depth=1", "origin", commit)
 
-    # Ensure the commit is locally available
-    logger.debug("Fetching specific commit", extra={"commit": commit})
-    await run_command(*git, "fetch", "--depth=1", "origin", commit)
+        # Write the work-tree at that commit
+        logger.info("Checking out commit", extra={"commit": commit})
+        repo.git.checkout(commit)
 
-    # Write the work-tree at that commit
-    logger.info("Checking out commit", extra={"commit": commit})
-    await run_command(*git, "checkout", commit)
-
-    # Update submodules
-    if config.include_submodules:
-        logger.info("Updating submodules")
-        await run_command(*git, "submodule", "update", "--init", "--recursive", "--depth=1")
-        logger.debug("Submodules updated successfully")
+        # Update submodules
+        if config.include_submodules:
+            logger.info("Updating submodules")
+            repo.git.submodule("update", "--init", "--recursive", "--depth=1")
+            logger.debug("Submodules updated successfully")
+    except git.GitCommandError as exc:
+        msg = f"Git operation failed: {exc}"
+        raise RuntimeError(msg) from exc
 
     logger.info("Git clone operation completed successfully", extra={"local_path": local_path})
