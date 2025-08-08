@@ -134,14 +134,11 @@ async def ingest_async(
             logger.info("Starting local directory processing")
 
         if not include_gitignored:
-            logger.debug("Applying gitignore patterns")
             _apply_gitignores(query)
 
         logger.info("Processing files and generating output")
         summary, tree, content = ingest_query(query)
 
-        if output:
-            logger.debug("Writing output to file", extra={"output_path": output})
         await _write_output(tree, content=content, target=output)
 
         logger.info("Ingestion completed successfully")

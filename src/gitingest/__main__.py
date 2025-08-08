@@ -29,6 +29,7 @@ class _CLIArgs(TypedDict):
     include_submodules: bool
     token: str | None
     output: str | None
+    mcp_server: bool
 
 
 @click.command()
@@ -76,6 +77,12 @@ class _CLIArgs(TypedDict):
     default=None,
     help="Output file path (default: digest.txt in current directory). Use '-' for stdout.",
 )
+@click.option(
+    "--mcp-server",
+    is_flag=True,
+    default=False,
+    help="Start the MCP (Model Context Protocol) server for LLM integration",
+)
 def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     """Run the CLI entry point to analyze a repo / directory and dump its contents.
 
@@ -98,6 +105,9 @@ def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     Output to stdout:
         $ gitingest -o -
         $ gitingest https://github.com/user/repo --output -
+
+    MCP server mode:
+        $ gitingest --mcp-server
 
     With filtering:
         $ gitingest -i "*.py" -e "*.log"
@@ -125,6 +135,7 @@ async def _async_main(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    mcp_server: bool = False,
 ) -> None:
     """Analyze a directory or repository and create a text dump of its contents.
 
@@ -161,6 +172,12 @@ async def _async_main(
         Raised if an error occurs during execution and the command must be aborted.
 
     """
+    # Check if MCP server mode is requested
+    if mcp_server:
+        from gitingest.mcp_server import start_mcp_server
+        await start_mcp_server()
+        return
+
     try:
         # Normalise pattern containers (the ingest layer expects sets)
         exclude_patterns = set(exclude_pattern) if exclude_pattern else set()
