@@ -6,7 +6,6 @@ and handling edge cases such as nonexistent URLs, timeouts, redirects, and speci
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
@@ -17,9 +16,8 @@ from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBID
 
 from gitingest.clone import clone_repo
 from gitingest.schemas import CloneConfig
-from gitingest.utils.exceptions import AsyncTimeoutError
 from gitingest.utils.git_utils import check_repo_exists
-from tests.conftest import DEMO_COMMIT, DEMO_URL, LOCAL_REPO_PATH
+from tests.conftest import DEMO_URL, LOCAL_REPO_PATH
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,24 +51,21 @@ async def test_clone_with_commit(repo_exists_true: AsyncMock, gitpython_mocks: d
     await clone_repo(clone_config)
 
     repo_exists_true.assert_any_call(clone_config.url, token=None)
-    
+
     # Verify GitPython calls were made
     mock_git_cmd = gitpython_mocks["git_cmd"]
     mock_repo = gitpython_mocks["repo"]
     mock_clone_from = gitpython_mocks["clone_from"]
-    
+
     # Should have called version (for ensure_git_installed)
     mock_git_cmd.version.assert_called()
-    
+
     # Should have called clone_from (since partial_clone=False)
     mock_clone_from.assert_called_once()
-    
+
     # Should have called fetch and checkout on the repo
     mock_repo.git.fetch.assert_called()
     mock_repo.git.checkout.assert_called_with(commit_hash)
-
-
-
 
 
 @pytest.mark.asyncio
@@ -118,15 +113,6 @@ async def test_check_repo_exists(status_code: int, *, expected: bool, mocker: Mo
     assert result is expected
 
 
-
-
-
-
-
-
-
-
-
 @pytest.mark.asyncio
 async def test_clone_without_commit(repo_exists_true: AsyncMock, gitpython_mocks: dict) -> None:
     """Test cloning a repository when no commit hash is provided.
@@ -140,12 +126,12 @@ async def test_clone_without_commit(repo_exists_true: AsyncMock, gitpython_mocks
     await clone_repo(clone_config)
 
     repo_exists_true.assert_any_call(clone_config.url, token=None)
-    
+
     # Verify GitPython calls were made
     mock_git_cmd = gitpython_mocks["git_cmd"]
     mock_repo = gitpython_mocks["repo"]
     mock_clone_from = gitpython_mocks["clone_from"]
-    
+
     # Should have resolved the commit via ls_remote
     mock_git_cmd.ls_remote.assert_called()
     # Should have cloned the repo
@@ -170,7 +156,7 @@ async def test_clone_creates_parent_directory(tmp_path: Path, gitpython_mocks: d
 
     # Verify parent directories were created
     assert nested_path.parent.exists()
-    
+
     # Verify clone operation happened
     mock_clone_from = gitpython_mocks["clone_from"]
     mock_clone_from.assert_called_once()
@@ -192,7 +178,7 @@ async def test_clone_with_specific_subpath(gitpython_mocks: dict) -> None:
     # Verify partial clone (using git.clone instead of Repo.clone_from)
     mock_git_cmd = gitpython_mocks["git_cmd"]
     mock_git_cmd.clone.assert_called()
-    
+
     # Verify sparse checkout was configured
     mock_repo = gitpython_mocks["repo"]
     mock_repo.git.sparse_checkout.assert_called()
@@ -232,9 +218,3 @@ async def test_check_repo_exists_with_redirect(mocker: MockerFixture) -> None:
     repo_exists = await check_repo_exists(DEMO_URL)
 
     assert repo_exists is False
-
-
-
-
-
-

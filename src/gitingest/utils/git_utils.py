@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import git
 import httpx
@@ -226,6 +226,8 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     ------
     ValueError
         If the ``ref_type`` parameter is not "branches" or "tags".
+    RuntimeError
+        If fetching branches or tags from the remote repository fails.
 
     """
     if ref_type not in ("branches", "tags"):
@@ -238,8 +240,7 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     try:
         git_cmd = git.Git()
 
-        # Prepare environment with authentication if needed
-        env = None
+        # Prepare authentication if needed
         if token and is_github_host(url):
             auth_url = _add_token_to_url(url, token)
             url = auth_url
@@ -284,6 +285,11 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
     git.Repo
         A GitPython Repo object configured with authentication.
 
+    Raises
+    ------
+    ValueError
+        If the local path is not a valid git repository.
+
     """
     try:
         repo = git.Repo(local_path)
@@ -295,10 +301,11 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
             key, value = auth_header.split("=", 1)
             repo.git.config(key, value)
 
-        return repo
     except git.InvalidGitRepositoryError as exc:
         msg = f"Invalid git repository at {local_path}"
         raise ValueError(msg) from exc
+
+    return repo
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -359,6 +366,11 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
         The configuration for cloning the repository, including subpath and blob flag.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
+
+    Raises
+    ------
+    RuntimeError
+        If the sparse-checkout configuration fails.
 
     """
     subpath = config.subpath.lstrip("/")
@@ -444,10 +456,11 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             msg = f"{pattern!r} not found in {url}"
             raise ValueError(msg)
 
-        return sha
     except git.GitCommandError as exc:
         msg = f"Failed to resolve {pattern} in {url}: {exc}"
         raise ValueError(msg) from exc
+
+    return sha
 
 
 def _pick_commit_sha(lines: Iterable[str]) -> str | None:
@@ -501,8 +514,6 @@ def _add_token_to_url(url: str, token: str) -> str:
         The URL with embedded authentication.
 
     """
-    from urllib.parse import urlparse, urlunparse
-
     parsed = urlparse(url)
     # Add token as username in URL (GitHub supports this)
     netloc = f"x-oauth-basic:{token}@{parsed.hostname}"

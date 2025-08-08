@@ -82,20 +82,20 @@ def test_create_git_repo(
     local_path: str,
     url: str,
     token: str | None,
-    should_configure_auth: bool,
+    should_configure_auth: bool,  # noqa: FBT001
     mocker: MockerFixture,
 ) -> None:
     """Test that ``create_git_repo`` creates a proper Git repo object."""
     # Mock git.Repo to avoid actual filesystem operations
     mock_repo = mocker.MagicMock()
     mock_repo_class = mocker.patch("git.Repo", return_value=mock_repo)
-    
+
     repo = create_git_repo(local_path, url, token)
-    
+
     # Should create repo with correct path
     mock_repo_class.assert_called_once_with(local_path)
     assert repo == mock_repo
-    
+
     # Check auth configuration
     if should_configure_auth:
         mock_repo.git.config.assert_called_once()
@@ -140,7 +140,7 @@ def test_create_git_repo_helper_calls(
     mock_repo = mocker.MagicMock()
     mocker.patch("git.Repo", return_value=mock_repo)
 
-    repo = create_git_repo(str(work_dir), url, token)
+    create_git_repo(str(work_dir), url, token)
 
     if should_call:
         header_mock.assert_called_once_with(token, url=url)
@@ -241,13 +241,13 @@ def test_create_git_repo_with_ghe_urls(
     """Test that ``create_git_repo`` handles GitHub Enterprise URLs correctly."""
     mock_repo = mocker.MagicMock()
     mocker.patch("git.Repo", return_value=mock_repo)
-    
-    repo = create_git_repo(local_path, url, token)
+
+    create_git_repo(local_path, url, token)
 
     # Should configure auth with the correct hostname
     mock_repo.git.config.assert_called_once()
     auth_config_call = mock_repo.git.config.call_args[0]
-    
+
     # The first argument should contain the hostname
     assert expected_auth_hostname in auth_config_call[0]
 
@@ -270,8 +270,8 @@ def test_create_git_repo_ignores_non_github_urls(
     """Test that ``create_git_repo`` does not configure auth for non-GitHub URLs."""
     mock_repo = mocker.MagicMock()
     mocker.patch("git.Repo", return_value=mock_repo)
-    
-    repo = create_git_repo(local_path, url, token)
+
+    create_git_repo(local_path, url, token)
 
     # Should not configure auth for non-GitHub URLs
     mock_repo.git.config.assert_not_called()

@@ -47,6 +47,8 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     ------
     ValueError
         If the repository is not found, if the provided URL is invalid, or if the token format is invalid.
+    RuntimeError
+        If Git operations fail during the cloning process.
 
     """
     # Extract and validate query parameters
@@ -121,7 +123,40 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
         await checkout_partial_clone(config, token=token)
         logger.debug("Partial clone setup completed")
 
-    # Create repo object and perform operations
+    # Perform post-clone operations
+    await _perform_post_clone_operations(config, local_path, url, token, commit)
+
+    logger.info("Git clone operation completed successfully", extra={"local_path": local_path})
+
+
+async def _perform_post_clone_operations(
+    config: CloneConfig,
+    local_path: str,
+    url: str,
+    token: str | None,
+    commit: str,
+) -> None:
+    """Perform post-clone operations like fetching, checkout, and submodule updates.
+
+    Parameters
+    ----------
+    config : CloneConfig
+        The configuration for cloning the repository.
+    local_path : str
+        The local path where the repository was cloned.
+    url : str
+        The repository URL.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+    commit : str
+        The commit SHA to checkout.
+
+    Raises
+    ------
+    RuntimeError
+        If any Git operation fails.
+
+    """
     try:
         repo = create_git_repo(local_path, url, token)
 
@@ -141,5 +176,3 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     except git.GitCommandError as exc:
         msg = f"Git operation failed: {exc}"
         raise RuntimeError(msg) from exc
-
-    logger.info("Git clone operation completed successfully", extra={"local_path": local_path})
