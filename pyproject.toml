@@ -53,6 +53,11 @@ server = [
     "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
 ]
 
+mcp = [
+    "mcp>=1.0.0",  # Model Context Protocol
+    "pydantic>=2.0.0",
+]
+
 [project.scripts]
 gitingest = "gitingest.__main__:main"
 
@@ -131,3 +136,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 python_classes = "Test*"
 python_functions = "test_*"
+addopts = "--strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
