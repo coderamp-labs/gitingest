@@ -49,12 +49,12 @@ async def test_clone_with_commit(repo_exists_true: AsyncMock, gitpython_mocks: d
     await clone_repo(clone_config)
 
     repo_exists_true.assert_any_call(clone_config.url, token=None)
-
+    
     # Verify GitPython calls were made
     mock_git_cmd = gitpython_mocks["git_cmd"]
     mock_repo = gitpython_mocks["repo"]
     mock_clone_from = gitpython_mocks["clone_from"]
-
+    
     # Should have called version (for ensure_git_installed)
     mock_git_cmd.version.assert_called()
 
