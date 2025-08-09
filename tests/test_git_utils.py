@@ -277,3 +277,30 @@ def test_create_git_command_ignores_non_github_urls(
     # Should only have base command and -C option, no auth headers
     expected = [*base_cmd, "-C", local_path]
     assert cmd == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "not-a-url",
+        "ftp://github.com/owner/repo.git",
+        "github.com/owner/repo.git",
+        "https://",
+    ],
+)
+def test_is_github_host_edge_cases(url: str) -> None:
+    """Test is_github_host with malformed or edge-case URLs."""
+    try:
+        result = is_github_host(url)
+        assert isinstance(result, bool)
+    except (ValueError, TypeError) as exc:
+        pytest.fail(f"is_github_host raised {exc.__class__.__name__} for url: {url}")
+
+
+def test_token_not_in_command_plaintext() -> None:
+    """Ensure the token is not present in the command as plain text."""
+    token = "ghp_" + "x" * 36
+    cmd = create_git_command(["git", "clone"], "/tmp", "https://github.com/owner/repo.git", token)
+    for part in cmd:
+        assert token not in part or "Basic" in part
