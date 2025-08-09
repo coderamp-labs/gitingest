@@ -11,7 +11,7 @@
   <br>
   <!-- row 2 — quality & community -->
   <a href="https://github.com/coderamp-labs/gitingest/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/coderamp-labs/gitingest/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <!-- <a href="https://codecov.io/gh/coderamp-labs/gitingest"><img src="https://codecov.io/gh/coderamp-labs/gitingest/graph/badge.svg" alt="Code Coverage"></a> -->
+
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/coderamp-labs/gitingest"><img src="https://api.scorecard.dev/projects/github.com/coderamp-labs/gitingest/badge" alt="OpenSSF Scorecard"></a>
   <br>
