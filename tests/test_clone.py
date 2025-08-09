@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
 
-import httpx
+import git
 import pytest
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.clone import clone_repo
 from gitingest.schemas import CloneConfig
@@ -21,6 +19,7 @@ from tests.conftest import DEMO_URL, LOCAL_REPO_PATH
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from unittest.mock import AsyncMock
 
     from pytest_mock import MockerFixture
 
@@ -93,24 +92,31 @@ async def test_clone_nonexistent_repository(repo_exists_true: AsyncMock) -> None
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("status_code", "expected"),
+    ("git_command_succeeds", "expected"),
     [
-        (HTTP_200_OK, True),
-        (HTTP_401_UNAUTHORIZED, False),
-        (HTTP_403_FORBIDDEN, False),
-        (HTTP_404_NOT_FOUND, False),
+        (True, True),  # git ls-remote succeeds -> repo exists
+        (False, False),  # git ls-remote fails -> repo doesn't exist or no access
     ],
 )
-async def test_check_repo_exists(status_code: int, *, expected: bool, mocker: MockerFixture) -> None:
-    """Verify that ``check_repo_exists`` interprets httpx results correctly."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__.return_value = mock_client  # context-manager protocol
-    mock_client.head.return_value = httpx.Response(status_code=status_code)
-    mocker.patch("httpx.AsyncClient", return_value=mock_client)
+async def test_check_repo_exists(
+    git_command_succeeds: bool,  # noqa: FBT001
+    *,
+    expected: bool,
+    mocker: MockerFixture,
+) -> None:
+    """Verify that ``check_repo_exists`` interprets git ls-remote results correctly."""
+    mock_git = mocker.patch("git.Git")
+    mock_git_instance = mock_git.return_value
+
+    if git_command_succeeds:
+        mock_git_instance.ls_remote.return_value = "abc123\trefs/heads/main\n"
+    else:
+        mock_git_instance.ls_remote.side_effect = git.GitCommandError("ls-remote", 128)
 
     result = await check_repo_exists(DEMO_URL)
 
     assert result is expected
+    mock_git_instance.ls_remote.assert_called_once_with(DEMO_URL, "--exit-code")
 
 
 @pytest.mark.asyncio
@@ -202,19 +208,27 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
 
 
 @pytest.mark.asyncio
-async def test_check_repo_exists_with_redirect(mocker: MockerFixture) -> None:
-    """Test ``check_repo_exists`` when a redirect (302) is returned.
+async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
+    """Test ``check_repo_exists`` with authentication token.
 
-    Given a URL that responds with "302 Found":
+    Given a GitHub URL and a token:
     When ``check_repo_exists`` is called,
-    Then it should return ``False``, indicating the repo is inaccessible.
+    Then it should add the token to the URL and call git ls-remote.
     """
-    mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
-    mock_process = AsyncMock()
-    mock_process.communicate.return_value = (b"302\n", b"")
-    mock_process.returncode = 0  # Simulate successful request
-    mock_exec.return_value = mock_process
+    mock_git = mocker.patch("git.Git")
+    mock_git_instance = mock_git.return_value
+    mock_git_instance.ls_remote.return_value = "abc123\trefs/heads/main\n"
 
-    repo_exists = await check_repo_exists(DEMO_URL)
+    # Mock the _add_token_to_url function
+    mock_add_token = mocker.patch("gitingest.utils.git_utils._add_token_to_url")
+    mock_add_token.return_value = "https://x-oauth-basic:token123@github.com/test/repo"
 
-    assert repo_exists is False
+    test_token = "token123"  # noqa: S105
+    result = await check_repo_exists("https://github.com/test/repo", token=test_token)
+
+    assert result is True
+    mock_add_token.assert_called_once_with("https://github.com/test/repo", "token123")
+    mock_git_instance.ls_remote.assert_called_once_with(
+        "https://x-oauth-basic:token123@github.com/test/repo",
+        "--exit-code",
+    )
