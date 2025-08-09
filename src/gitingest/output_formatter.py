@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import requests.exceptions
 import tiktoken
 
-from gitingest.schemas import FileSystemNode, FileSystemNodeType
-from gitingest.utils.compat_func import readlink
+from gitingest.schemas import FileSystemDirectory, FileSystemFile, FileSystemNode, FileSystemSymlink
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -42,18 +41,19 @@ def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, 
         A tuple containing the summary, directory structure, and file contents.
 
     """
-    is_single_file = node.type == FileSystemNodeType.FILE
-    summary = _create_summary_prefix(query, single_file=is_single_file)
-
-    if node.type == FileSystemNodeType.DIRECTORY:
+    # Use polymorphic properties - much cleaner!
+    summary = _create_summary_prefix(query, single_file=node.is_single_file)
+    
+    # Add type-specific summary info
+    if isinstance(node, FileSystemDirectory):
         summary += f"Files analyzed: {node.file_count}\n"
-    elif node.type == FileSystemNodeType.FILE:
-        summary += f"File: {node.name}\n"
-        summary += f"Lines: {len(node.content.splitlines()):,}\n"
+    elif isinstance(node, FileSystemFile):
+        summary += f"File: {node.name or ''}\nLines: {len(node.content.splitlines()):,}\n"
 
     tree = "Directory structure:\n" + _create_tree_structure(query, node=node)
-
-    content = _gather_file_contents(node)
+    
+    # Use polymorphic content gathering
+    content = node.gather_contents()
 
     token_estimate = _format_token_count(tree + content)
     if token_estimate:
@@ -102,30 +102,6 @@ def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) 
     return "\n".join(parts) + "\n"
 
 
-def _gather_file_contents(node: FileSystemNode) -> str:
-    """Recursively gather contents of all files under the given node.
-
-    This function recursively processes a directory node and gathers the contents of all files
-    under that node. It returns the concatenated content of all files as a single string.
-
-    Parameters
-    ----------
-    node : FileSystemNode
-        The current directory or file node being processed.
-
-    Returns
-    -------
-    str
-        The concatenated content of all files under the given node.
-
-    """
-    if node.type != FileSystemNodeType.DIRECTORY:
-        return node.content_string
-
-    # Recursively gather contents of all files under the current directory
-    return "\n".join(_gather_file_contents(child) for child in node.children)
-
-
 def _create_tree_structure(
     query: IngestionQuery,
     *,
@@ -162,16 +138,10 @@ def _create_tree_structure(
     tree_str = ""
     current_prefix = "└── " if is_last else "├── "
 
-    # Indicate directories with a trailing slash
-    display_name = node.name
-    if node.type == FileSystemNodeType.DIRECTORY:
-        display_name += "/"
-    elif node.type == FileSystemNodeType.SYMLINK:
-        display_name += " -> " + readlink(node.path).name
+    # Use polymorphic display name - handles files, dirs, symlinks automatically!
+    tree_str += f"{prefix}{current_prefix}{node.display_name}\n"
 
-    tree_str += f"{prefix}{current_prefix}{display_name}\n"
-
-    if node.type == FileSystemNodeType.DIRECTORY and node.children:
+    if node.children:
         prefix += "    " if is_last else "│   "
         for i, child in enumerate(node.children):
             tree_str += _create_tree_structure(query, node=child, prefix=prefix, is_last=i == len(node.children) - 1)

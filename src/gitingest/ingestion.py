@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
 from gitingest.output_formatter import format_node
-from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats
+from gitingest.schemas import FileSystemDirectory, FileSystemFile, FileSystemNode, FileSystemStats, FileSystemSymlink
+from gitingest.utils.compat_func import readlink
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 from gitingest.utils.logging_config import get_logger
 
@@ -70,9 +71,8 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
 
         relative_path = path.relative_to(query.local_path)
 
-        file_node = FileSystemNode(
+        file_node = FileSystemFile(
             name=path.name,
-            type=FileSystemNodeType.FILE,
             size=path.stat().st_size,
             file_count=1,
             path_str=str(relative_path),
@@ -95,9 +95,8 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
 
     logger.info("Processing directory", extra={"directory_path": str(path)})
 
-    root_node = FileSystemNode(
+    root_node = FileSystemDirectory(
         name=path.name,
-        type=FileSystemNodeType.DIRECTORY,
         path_str=str(path.relative_to(query.local_path)),
         path=path,
     )
@@ -161,9 +160,8 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
-            child_directory_node = FileSystemNode(
+            child_directory_node = FileSystemDirectory(
                 name=sub_path.name,
-                type=FileSystemNodeType.DIRECTORY,
                 path_str=str(sub_path.relative_to(query.local_path)),
                 path=sub_path,
                 depth=node.depth + 1,
@@ -201,11 +199,11 @@ def _process_symlink(path: Path, parent_node: FileSystemNode, stats: FileSystemS
         The base path of the repository or directory being processed.
 
     """
-    child = FileSystemNode(
+    child = FileSystemSymlink(
         name=path.name,
-        type=FileSystemNodeType.SYMLINK,
         path_str=str(path.relative_to(local_path)),
         path=path,
+        target=str(readlink(path)),
         depth=parent_node.depth + 1,
     )
     stats.total_files += 1
@@ -258,9 +256,8 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
     stats.total_files += 1
     stats.total_size += file_size
 
-    child = FileSystemNode(
+    child = FileSystemFile(
         name=path.name,
-        type=FileSystemNodeType.FILE,
         size=file_size,
         file_count=1,
         path_str=str(path.relative_to(local_path)),

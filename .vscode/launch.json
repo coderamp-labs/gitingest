@@ -5,7 +5,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "server",
-            "args": [],
+            "args": ["--reload"],
             "cwd": "${workspaceFolder}/src"
         }
     ]
