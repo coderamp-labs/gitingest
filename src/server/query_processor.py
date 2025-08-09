@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
-from gitingest.utils.git_utils import resolve_commit, validate_github_token
+from gitingest.utils.git_utils import resolve_commit
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.pattern_utils import process_patterns
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
@@ -262,9 +262,6 @@ async def process_query(
         If the commit hash is not found (should never happen).
 
     """
-    if token:
-        validate_github_token(token)
-
     try:
         query = await parse_remote_repo(input_text, token=token)
     except Exception as exc:
