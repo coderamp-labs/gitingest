@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import re
 import sys
 from pathlib import Path
@@ -120,7 +121,7 @@ async def ensure_git_installed() -> None:
 
 
 async def check_repo_exists(url: str, token: str | None = None) -> bool:
-    """Check whether a remote Git repository is reachable using git ls-remote.
+    """Check whether a remote Git repository is reachable.
 
     Parameters
     ----------
@@ -136,25 +137,12 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
 
     """
     try:
-        await ensure_git_installed()
-
-        git_cmd = git.Git()
-
-        # Add token to URL if provided and it's a GitHub repository
-        auth_url = url
-        if token and is_github_host(url):
-            auth_url = _add_token_to_url(url, token)
-
-        # Use git ls-remote to check if repository exists
-        # This will return refs if repo exists, or fail if it doesn't
-        git_cmd.ls_remote(auth_url, "--exit-code")
-
-    except git.GitCommandError:
-        # Repository doesn't exist, is private without proper auth, or other git error
+        # Try to resolve HEAD - if repo exists, this will work
+        await _resolve_ref_to_sha(url, "HEAD", token=token)
+    except (ValueError, Exception):
+        # Repository doesn't exist, is private without proper auth, or other error
         return False
-    except Exception:
-        # Git not installed or other system error
-        return False
+
     return True
 
 
@@ -448,7 +436,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             raise ValueError(msg)
 
     except git.GitCommandError as exc:
-        msg = f"Failed to resolve {pattern} in {url}: {exc}"
+        msg = f"Failed to resolve {pattern} in {url}:{os.linesep}{exc}"
         raise ValueError(msg) from exc
 
     return sha

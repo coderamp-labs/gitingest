@@ -9,7 +9,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-import git
 import pytest
 
 from gitingest.clone import clone_repo
@@ -104,19 +103,18 @@ async def test_check_repo_exists(
     expected: bool,
     mocker: MockerFixture,
 ) -> None:
-    """Verify that ``check_repo_exists`` interprets git ls-remote results correctly."""
-    mock_git = mocker.patch("git.Git")
-    mock_git_instance = mock_git.return_value
+    """Verify that ``check_repo_exists`` works by using _resolve_ref_to_sha."""
+    mock_resolve = mocker.patch("gitingest.utils.git_utils._resolve_ref_to_sha")
 
     if git_command_succeeds:
-        mock_git_instance.ls_remote.return_value = "abc123\trefs/heads/main\n"
+        mock_resolve.return_value = "abc123def456"  # Mock SHA
     else:
-        mock_git_instance.ls_remote.side_effect = git.GitCommandError("ls-remote", 128)
+        mock_resolve.side_effect = ValueError("Repository not found")
 
     result = await check_repo_exists(DEMO_URL)
 
     assert result is expected
-    mock_git_instance.ls_remote.assert_called_once_with(DEMO_URL, "--exit-code")
+    mock_resolve.assert_called_once_with(DEMO_URL, "HEAD", token=None)
 
 
 @pytest.mark.asyncio
@@ -213,22 +211,13 @@ async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
 
     Given a GitHub URL and a token:
     When ``check_repo_exists`` is called,
-    Then it should add the token to the URL and call git ls-remote.
+    Then it should pass the token to _resolve_ref_to_sha.
     """
-    mock_git = mocker.patch("git.Git")
-    mock_git_instance = mock_git.return_value
-    mock_git_instance.ls_remote.return_value = "abc123\trefs/heads/main\n"
-
-    # Mock the _add_token_to_url function
-    mock_add_token = mocker.patch("gitingest.utils.git_utils._add_token_to_url")
-    mock_add_token.return_value = "https://x-oauth-basic:token123@github.com/test/repo"
+    mock_resolve = mocker.patch("gitingest.utils.git_utils._resolve_ref_to_sha")
+    mock_resolve.return_value = "abc123def456"  # Mock SHA
 
     test_token = "token123"  # noqa: S105
     result = await check_repo_exists("https://github.com/test/repo", token=test_token)
 
     assert result is True
-    mock_add_token.assert_called_once_with("https://github.com/test/repo", "token123")
-    mock_git_instance.ls_remote.assert_called_once_with(
-        "https://x-oauth-basic:token123@github.com/test/repo",
-        "--exit-code",
-    )
+    mock_resolve.assert_called_once_with("https://github.com/test/repo", "HEAD", token=test_token)

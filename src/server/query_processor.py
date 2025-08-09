@@ -308,7 +308,7 @@ async def process_query(
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         # Clean up repository even if processing failed
         _cleanup_repository(clone_config)
-        return IngestErrorResponse(error=str(exc))
+        return IngestErrorResponse(error=f"{exc!s}")
 
     if len(content) > MAX_DISPLAY_SIZE:
         content = (
