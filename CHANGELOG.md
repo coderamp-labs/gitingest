@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **mcp:** Add Model Context Protocol (MCP) server support
+  - New `--mcp-server` CLI option to start MCP server
+  - `ingest_repository` tool for LLM integration
+  - Full MCP protocol compliance with stdio transport
+  - Enhanced MCP client examples for stdio transport
+
 ## [0.3.1](https://github.com/coderamp-labs/gitingest/compare/v0.3.0...v0.3.1) (2025-07-31)
 
 

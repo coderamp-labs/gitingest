@@ -115,6 +115,7 @@ async def test_large_repository(request: pytest.FixtureRequest) -> None:
         assert "error" in response_data
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_concurrent_requests(request: pytest.FixtureRequest) -> None:
     """Test handling of multiple concurrent requests."""

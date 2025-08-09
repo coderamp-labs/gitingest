@@ -6,6 +6,7 @@ readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
 dependencies = [
     "click>=8.0.0",
+    "gitpython>=3.1.0",
     "httpx",
     "loguru>=0.7.0",
     "pathspec>=0.12.1",
@@ -50,6 +51,11 @@ server = [
     "sentry-sdk[fastapi]",
     "slowapi",
     "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
+]
+
+mcp = [
+    "mcp>=1.0.0",  # Model Context Protocol
+    "pydantic>=2.0.0",
 ]
 
 [project.scripts]
@@ -130,3 +136,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 python_classes = "Test*"
 python_functions = "test_*"
+addopts = "--strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
