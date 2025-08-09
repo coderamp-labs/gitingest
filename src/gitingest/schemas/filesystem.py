@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from gitingest.utils.compat_func import readlink
-from gitingest.utils.file_utils import _decodes, _get_preferred_encodings, _read_chunk
-from gitingest.utils.notebook import process_notebook
-
 if TYPE_CHECKING:
     from pathlib import Path
+
 
 SEPARATOR = "=" * 48  # Tiktoken, the tokenizer openai uses, counts 2 tokens if we have more than 48
 
@@ -34,48 +31,68 @@ class FileSystemStats:
 
 
 @dataclass
-class FileSystemNode:  # pylint: disable=too-many-instance-attributes
-    """Class representing a node in the file system (either a file or directory).
+class Source(ABC):
+    """Abstract base class for all sources (files, directories, etc)."""
 
-    Tracks properties of files/directories for comprehensive analysis.
-    """
+    metadata: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)
 
-    name: str
-    type: FileSystemNodeType
-    path_str: str
-    path: Path
+    @abstractmethod
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this source."""
+
+
+@dataclass
+class FileSystemNode(Source):
+    """Base class for filesystem nodes (files, directories, symlinks)."""
+
+    name: str = ""
+    path_str: str = ""
+    path: Path = None  # type: ignore
+    depth: int = 0
     size: int = 0
+
+    @property
+    def tree(self) -> str:
+        """Return the name of this node."""
+        return self.name
+
+
+@dataclass
+class FileSystemFile(FileSystemNode):
+    """Represents a file in the filesystem."""
+
+    @property
+    def content(self) -> str:
+        """Read and return the content of the file."""
+        # read the file
+        try:
+            return self.path.read_text(encoding="utf-8")
+        except Exception as e:
+            return f"Error reading content of {self.name}: {e}"
+
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this file."""
+        current_prefix = "└── " if is_last else "├── "
+        return [f"{prefix}{current_prefix}{self.name}"]
+
+
+@dataclass
+class FileSystemDirectory(FileSystemNode):
+    """Represents a directory in the filesystem."""
+
+    children: list[FileSystemNode] = field(default_factory=list)
     file_count: int = 0
     dir_count: int = 0
-    depth: int = 0
-    children: list[FileSystemNode] = field(default_factory=list)
+    file_count_total: int = 0
+    type: FileSystemNodeType = FileSystemNodeType.DIRECTORY
 
     def sort_children(self) -> None:
-        """Sort the children nodes of a directory according to a specific order.
-
-        Order of sorting:
-          2. Regular files (not starting with dot)
-          3. Hidden files (starting with dot)
-          4. Regular directories (not starting with dot)
-          5. Hidden directories (starting with dot)
-
-        All groups are sorted alphanumerically within themselves.
-
-        Raises
-        ------
-        ValueError
-            If the node is not a directory.
-
-        """
-        if self.type != FileSystemNodeType.DIRECTORY:
-            msg = "Cannot sort children of a non-directory node"
-            raise ValueError(msg)
+        """Sort the children nodes of a directory according to a specific order."""
 
         def _sort_key(child: FileSystemNode) -> tuple[int, str]:
-            # returns the priority order for the sort function, 0 is first
-            # Groups: 0=README, 1=regular file, 2=hidden file, 3=regular dir, 4=hidden dir
             name = child.name.lower()
-            if child.type == FileSystemNodeType.FILE:
+            if hasattr(child, "type") and getattr(child, "type", None) == FileSystemNodeType.FILE:
                 if name == "readme" or name.startswith("readme."):
                     return (0, name)
                 return (1 if not name.startswith(".") else 2, name)
@@ -83,79 +100,55 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
 
         self.children.sort(key=_sort_key)
 
-    @property
-    def content_string(self) -> str:
-        """Return the content of the node as a string, including path and content.
-
-        Returns
-        -------
-        str
-            A string representation of the node's content.
-
-        """
-        parts = [
-            SEPARATOR,
-            f"{self.type.name}: {str(self.path_str).replace(os.sep, '/')}"
-            + (f" -> {readlink(self.path).name}" if self.type == FileSystemNodeType.SYMLINK else ""),
-            SEPARATOR,
-            f"{self.content}",
-        ]
-
-        return "\n".join(parts) + "\n\n"
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this directory."""
+        lines = []
+        current_prefix = "└── " if is_last else "├── "
+        display_name = self.name + "/"
+        lines.append(f"{prefix}{current_prefix}{display_name}")
+        if hasattr(self, "children") and self.children:
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            for i, child in enumerate(self.children):
+                is_last_child = i == len(self.children) - 1
+                lines.extend(child.render_tree(prefix=new_prefix, is_last=is_last_child))
+        return lines
 
     @property
-    def content(self) -> str:  # pylint: disable=too-many-return-statements
-        """Return file content (if text / notebook) or an explanatory placeholder.
+    def tree(self) -> str:
+        """Return the tree representation of this directory."""
+        return "\n".join(self.render_tree())
 
-        Heuristically decides whether the file is text or binary by decoding a small chunk of the file
-        with multiple encodings and checking for common binary markers.
 
-        Returns
-        -------
-        str
-            The content of the file, or an error message if the file could not be read.
+@dataclass
+class GitRepository(FileSystemDirectory):
+    """A directory that contains a .git folder, representing a Git repository."""
 
-        Raises
-        ------
-        ValueError
-            If the node is a directory.
+    git_info: dict = field(default_factory=dict)  # Store git metadata like branch, commit, etc.
 
-        """
-        if self.type == FileSystemNodeType.DIRECTORY:
-            msg = "Cannot read content of a directory node"
-            raise ValueError(msg)
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this git repository."""
+        lines = []
+        current_prefix = "└── " if is_last else "├── "
+        # Mark as git repo in the tree
+        display_name = f"{self.name}/ (git repository)"
+        lines.append(f"{prefix}{current_prefix}{display_name}")
+        if hasattr(self, "children") and self.children:
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            for i, child in enumerate(self.children):
+                is_last_child = i == len(self.children) - 1
+                lines.extend(child.render_tree(prefix=new_prefix, is_last=is_last_child))
+        return lines
 
-        if self.type == FileSystemNodeType.SYMLINK:
-            return ""  # TODO: are we including the empty content of symlinks?
 
-        if self.path.suffix == ".ipynb":  # Notebook
-            try:
-                return process_notebook(self.path)
-            except Exception as exc:
-                return f"Error processing notebook: {exc}"
+@dataclass
+class FileSystemSymlink(FileSystemNode):
+    """Represents a symbolic link in the filesystem."""
 
-        chunk = _read_chunk(self.path)
+    target: str = ""
+    # Add symlink-specific fields if needed
 
-        if chunk is None:
-            return "Error reading file"
-
-        if chunk == b"":
-            return "[Empty file]"
-
-        if not _decodes(chunk, "utf-8"):
-            return "[Binary file]"
-
-        # Find the first encoding that decodes the sample
-        good_enc: str | None = next(
-            (enc for enc in _get_preferred_encodings() if _decodes(chunk, encoding=enc)),
-            None,
-        )
-
-        if good_enc is None:
-            return "Error: Unable to decode file with available encodings"
-
-        try:
-            with self.path.open(encoding=good_enc) as fp:
-                return fp.read()
-        except (OSError, UnicodeDecodeError) as exc:
-            return f"Error reading file with {good_enc!r}: {exc}"
+    def render_tree(self, prefix: str = "", *, is_last: bool = True) -> list[str]:
+        """Render the tree representation of this symlink."""
+        current_prefix = "└── " if is_last else "├── "
+        display_name = f"{self.name} -> {self.target}" if self.target else self.name
+        return [f"{prefix}{current_prefix}{display_name}"]

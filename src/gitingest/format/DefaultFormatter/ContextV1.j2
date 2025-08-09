@@ -1,0 +1,11 @@
+# Generated using https://gitingest.com/{{ source.query.user_name }}/{{ source.query.repo_name }}{{ source.query.subpath }}
+
+Sources used:
+{%- for src in source %}
+- {{ src.name }}: {{ src.__class__.__name__ }}
+{% endfor %}
+
+{%- for src in source.sources %}
+{{ formatter.format(src, source.query) }}
+{%- endfor %}
+# End of https://gitingest.com/{{ source.query.user_name }}/{{ source.query.repo_name }}{{ source.query.subpath }}

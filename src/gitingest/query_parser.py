@@ -135,7 +135,13 @@ def parse_local_dir_path(path_str: str) -> IngestionQuery:
     """
     path_obj = Path(path_str).resolve()
     slug = path_obj.name if path_str == "." else path_str.strip("/")
-    return IngestionQuery(local_path=path_obj, slug=slug, id=uuid.uuid4())
+    return IngestionQuery(
+        local_path=path_obj, 
+        slug=slug, 
+        id=uuid.uuid4(),
+        user_name="local",  # Set a default value for local paths
+        repo_name=slug,     # Use the slug as the repo name for local paths
+    )
 
 
 async def _configure_branch_or_tag(
