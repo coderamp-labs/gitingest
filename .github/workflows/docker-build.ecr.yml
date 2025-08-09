@@ -6,6 +6,15 @@ on:
       - 'main'
     tags:
       - '*'
+    paths:
+      - 'Dockerfile*'
+      - 'compose.yml'
+      - '.docker/**'
+      - '.dockerignore'
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - '.github/workflows/docker-build.ecr.yml'
   merge_group:
   pull_request:
     types: [labeled, synchronize, reopened, ready_for_review, opened]

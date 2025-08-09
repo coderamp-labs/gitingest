@@ -14,8 +14,58 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Job pour détecter les changements dans différents types de fichiers
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python-changed: ${{ steps.changes.outputs.python }}
+      javascript-changed: ${{ steps.changes.outputs.javascript }}
+      docker-changed: ${{ steps.changes.outputs.docker }}
+      docs-changed: ${{ steps.changes.outputs.docs }}
+      config-changed: ${{ steps.changes.outputs.config }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - 'pyproject.toml'
+              - 'requirements*.txt'
+              - 'tests/**'
+            javascript:
+              - '**/*.js'
+              - '**/*.ts'
+              - '**/*.jsx'
+              - '**/*.tsx'
+              - 'src/static/**'
+              - 'eslint.config.cjs'
+              - 'package*.json'
+            docker:
+              - 'Dockerfile*'
+              - 'compose.yml'
+              - '.docker/**'
+              - '.dockerignore'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+            config:
+              - '.github/**'
+              - '.pre-commit-config.yaml'
+              - 'renovate.json'
+
+  # Tests Python - exécutés seulement si du code Python a changé
+  test-python:
     runs-on: ${{ matrix.os }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python-changed == 'true' || needs.detect-changes.outputs.config-changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -57,12 +107,94 @@ jobs:
         if: ${{ matrix.coverage != true }}
         run: pytest
 
-      - name: Run tests
+      - name: Run tests with coverage
         if: ${{ matrix.coverage == true }}
-        run: pytest
+        run: pytest --cov=src --cov-report=xml --cov-report=term
 
+      - name: Upload coverage to Codecov
+        if: ${{ matrix.coverage == true }}
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
 
+  # Vérifications JavaScript/Static - exécutées seulement si des fichiers JS ont changé
+  test-javascript:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.javascript-changed == 'true' || needs.detect-changes.outputs.config-changed == 'true'
+    
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install ESLint dependencies
+        run: npm install eslint @eslint/js
+
+      - name: Run ESLint
+        run: npx eslint src/static/js/**/*.js
+
+  # Pre-commit hooks - exécutés selon le type de changement
+  pre-commit:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python-changed == 'true' || needs.detect-changes.outputs.javascript-changed == 'true' || needs.detect-changes.outputs.config-changed == 'true'
+    
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+          cache: 'pip'
 
       - name: Run pre-commit hooks
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
-        if: ${{ matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' }}
+
+  # Job de résumé pour vérifier que tous les tests requis ont réussi
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-python, test-javascript, pre-commit]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          echo "Python tests needed: ${{ needs.detect-changes.outputs.python-changed }}"
+          echo "JavaScript tests needed: ${{ needs.detect-changes.outputs.javascript-changed }}"
+          echo "Python tests result: ${{ needs.test-python.result }}"
+          echo "JavaScript tests result: ${{ needs.test-javascript.result }}"
+          echo "Pre-commit result: ${{ needs.pre-commit.result }}"
+          
+          # Vérifier que tous les jobs requis ont réussi ou ont été skippés
+          if [[ "${{ needs.detect-changes.outputs.python-changed }}" == "true" && "${{ needs.test-python.result }}" != "success" ]]; then
+            echo "Python tests failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.detect-changes.outputs.javascript-changed }}" == "true" && "${{ needs.test-javascript.result }}" != "success" ]]; then
+            echo "JavaScript tests failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.pre-commit.result }}" == "failure" ]]; then
+            echo "Pre-commit hooks failed"
+            exit 1
+          fi
+          
+          echo "All required tests passed!"

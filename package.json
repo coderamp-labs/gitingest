@@ -1,0 +1,17 @@
+{
+  "name": "gitingest",
+  "version": "1.0.0",
+  "description": "Git repository ingestion tool",
+  "private": true,
+  "scripts": {
+    "lint:js": "eslint src/static/js/**/*.js",
+    "lint:js:fix": "eslint src/static/js/**/*.js --fix"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
