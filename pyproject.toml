@@ -1,6 +1,6 @@
 [project]
 name = "gitingest"
-version = "0.3.1"
+version = "0.4.0"
 description="CLI tool to analyze and create text dumps of codebases for LLMs"
 readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
