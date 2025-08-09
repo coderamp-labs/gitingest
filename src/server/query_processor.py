@@ -12,7 +12,8 @@ from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.pattern_utils import process_patterns
-from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
+from server.ai_ingestion import ai_ingest_query
+from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, S3Metadata
 from server.s3_utils import (
     _build_s3_url,
     check_s3_object_exists,
@@ -40,7 +41,8 @@ def _cleanup_repository(clone_config: CloneConfig) -> None:
             shutil.rmtree(local_path)
             logger.info("Successfully cleaned up repository", extra={"local_path": str(local_path)})
     except (PermissionError, OSError):
-        logger.exception("Could not delete repository", extra={"local_path": str(clone_config.local_path)})
+        # logger.exception("Could not delete repository", extra={"local_path": str(clone_config.local_path)})
+        pass # TODO: put this back but it's breaking my balls atm
 
 
 async def _check_s3_cache(
@@ -124,9 +126,10 @@ async def _check_s3_cache(
                 digest_url=s3_url,
                 tree=tree,
                 content=content,
-                default_max_file_size=max_file_size,
-                pattern_type=pattern_type,
-                pattern=pattern,
+                context_size="128k",  # Default for cached responses
+                user_prompt="",  # Empty for cached responses
+                selected_files=[],  # Empty for cached responses
+                selected_files_detailed=None,  # Not available for cached responses
             )
     except Exception as exc:
         # Log the exception but don't fail the entire request
@@ -228,26 +231,23 @@ def _generate_digest_url(query: IngestionQuery) -> str:
 
 async def process_query(
     input_text: str,
-    max_file_size: int,
-    pattern_type: PatternType,
-    pattern: str,
+    context_size: str,
+    user_prompt: str,
     token: str | None = None,
 ) -> IngestResponse:
-    """Process a query by parsing input, cloning a repository, and generating a summary.
+    """Process a query using AI-powered file selection.
 
-    Handle user input, process Git repository data, and prepare
-    a response for rendering a template with the processed results or an error message.
+    Handle user input, process Git repository data using AI for intelligent file selection,
+    and prepare a response for rendering a template with the processed results or an error message.
 
     Parameters
     ----------
     input_text : str
         Input text provided by the user, typically a Git repository URL or slug.
-    max_file_size : int
-        Max file size in KB to be include in the digest.
-    pattern_type : PatternType
-        Type of pattern to use (either "include" or "exclude")
-    pattern : str
-        Pattern to include or exclude in the query, depending on the pattern type.
+    context_size : str
+        Desired output size in tokens for the final digest.
+    user_prompt : str
+        User prompt to guide AI file selection.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
 
@@ -272,23 +272,14 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
-    query.max_file_size = max_file_size * 1024  # Convert to bytes since we currently use KB in higher levels
-    query.ignore_patterns, query.include_patterns = process_patterns(
-        exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
-        include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
-    )
+    # Use default file size limit for initial processing
+    query.max_file_size = 10 * 1024 * 1024  # 10MB default
+    # Clear patterns since AI will handle file selection
+    query.ignore_patterns = set()
+    query.include_patterns = None
 
-    # Check if digest already exists on S3 before cloning
-    s3_response = await _check_s3_cache(
-        query=query,
-        input_text=input_text,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type.value,
-        pattern=pattern,
-        token=token,
-    )
-    if s3_response:
-        return s3_response
+    # Note: S3 caching is disabled for AI-powered flow since results depend on prompts
+    # TODO: Implement prompt-aware caching in the future
 
     clone_config = query.extract_clone_config()
     await clone_repo(clone_config, token=token)
@@ -301,11 +292,32 @@ async def process_query(
         raise RuntimeError(msg)
 
     try:
-        summary, tree, content = ingest_query(query)
+        # Build initial tree and get content
+        from server.ai_ingestion import _build_file_system_node
+        from gitingest.ingestion import ingest_query
+        
+        root_node = _build_file_system_node(query)
+        initial_summary, initial_tree, initial_content = ingest_query(query)
+        
+        # Use AI-powered ingestion
+        ai_result = await ai_ingest_query(
+            root_node=root_node,
+            query=query,
+            user_prompt=user_prompt,
+            context_size=context_size,
+            initial_content=initial_content
+        )
+        summary = ai_result.summary
+        tree = ai_result.tree
+        content = ai_result.content
+        selected_files = ai_result.selected_files
+        selected_files_detailed = ai_result.selected_files_detailed
+        reasoning = ai_result.reasoning
+        
         digest_content = tree + "\n" + content
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
-        _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+        _print_error(query.url, exc, context_size, user_prompt)
         # Clean up repository even if processing failed
         _cleanup_repository(clone_config)
         return IngestErrorResponse(error=str(exc))
@@ -318,9 +330,8 @@ async def process_query(
 
     _print_success(
         url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
+        context_size=context_size,
+        user_prompt=user_prompt,
         summary=summary,
     )
 
@@ -336,9 +347,11 @@ async def process_query(
         digest_url=digest_url,
         tree=tree,
         content=content,
-        default_max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
+        context_size=context_size,
+        user_prompt=user_prompt,
+        selected_files=selected_files,
+        selected_files_detailed=selected_files_detailed,
+        reasoning=reasoning,
     )
 
 
@@ -370,7 +383,7 @@ def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) 
     )
 
 
-def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str, pattern: str) -> None:
+def _print_error(url: str, exc: Exception, context_size: str, user_prompt: str) -> None:
     """Print a formatted error message for debugging.
 
     Parameters
@@ -379,51 +392,54 @@ def _print_error(url: str, exc: Exception, max_file_size: int, pattern_type: str
         The URL associated with the query that caused the error.
     exc : Exception
         The exception raised during the query or process.
-    max_file_size : int
-        The maximum file size allowed for the query, in bytes.
-    pattern_type : str
-        Specifies the type of pattern to use, either "include" or "exclude".
-    pattern : str
-        The actual pattern string to include or exclude in the query.
+    context_size : str
+        The context size requested.
+    user_prompt : str
+        The user prompt for file selection.
 
     """
     logger.error(
-        "Query processing failed",
+        "AI-powered query processing failed",
         extra={
             "url": url,
-            "max_file_size_kb": int(max_file_size / 1024),
-            "pattern_type": pattern_type,
-            "pattern": pattern,
+            "context_size": context_size,
+            "user_prompt": user_prompt[:100] + "..." if len(user_prompt) > 100 else user_prompt,
             "error": str(exc),
         },
     )
 
 
-def _print_success(url: str, max_file_size: int, pattern_type: str, pattern: str, summary: str) -> None:
+def _print_success(url: str, context_size: str, user_prompt: str, summary: str) -> None:
     """Print a formatted success message for debugging.
 
     Parameters
     ----------
     url : str
         The URL associated with the successful query.
-    max_file_size : int
-        The maximum file size allowed for the query, in bytes.
-    pattern_type : str
-        Specifies the type of pattern to use, either "include" or "exclude".
-    pattern : str
-        The actual pattern string to include or exclude in the query.
+    context_size : str
+        The context size requested.
+    user_prompt : str
+        The user prompt for file selection.
     summary : str
         A summary of the query result, including details like estimated tokens.
 
     """
-    estimated_tokens = summary[summary.index("Estimated tokens:") + len("Estimated ") :]
+    try:
+        estimated_tokens_start = summary.index("Estimated tokens:") + len("Estimated tokens: ")
+        estimated_tokens_end = summary.find("\n", estimated_tokens_start)
+        if estimated_tokens_end == -1:
+            estimated_tokens = summary[estimated_tokens_start:]
+        else:
+            estimated_tokens = summary[estimated_tokens_start:estimated_tokens_end]
+    except ValueError:
+        estimated_tokens = "unknown"
+    
     logger.info(
-        "Query processing completed successfully",
+        "AI-powered query processing completed successfully",
         extra={
             "url": url,
-            "max_file_size_kb": int(max_file_size / 1024),
-            "pattern_type": pattern_type,
-            "pattern": pattern,
-            "estimated_tokens": estimated_tokens,
+            "context_size": context_size,
+            "user_prompt": user_prompt[:100] + "..." if len(user_prompt) > 100 else user_prompt,
+            "estimated_tokens": estimated_tokens.strip(),
         },
     )

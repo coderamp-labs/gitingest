@@ -11,8 +11,8 @@
             <img src="/static/svg/sparkle-red.svg" class="sparkle-red no-drag">
             <img src="/static/svg/sparkle-green.svg" class="sparkle-green no-drag">
         </div>
-        <p class="intro-text mt-8">Turn any Git repository into a simple text digest of its codebase.</p>
-        <p class="intro-text mt-0">This is useful for feeding a codebase into any LLM.</p>
+        <p class="intro-text mt-8">Turn any Git repository into a smart digest of its most relevant code.</p>
+        <p class="intro-text mt-0">Intelligent file selection optimized for your specific needs.</p>
     </div>
     {% if error_message %}
         <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"
@@ -20,10 +20,10 @@
              data-message="{{ error_message }}">{{ error_message }}</div>
     {% endif %}
     {% with show_examples=true %}
-        {% include 'components/git_form.jinja' %}
+        {% include 'components/git_form_ai.jinja' %}
     {% endwith %}
     <p class="text-gray-600 text-sm max-w-2xl mx-auto text-center mt-4">
         You can also replace 'hub' with 'ingest' in any GitHub URL.
     </p>
-    {% include 'components/result.jinja' %}
+    {% include 'components/result_ai.jinja' %}
 {% endblock %}
