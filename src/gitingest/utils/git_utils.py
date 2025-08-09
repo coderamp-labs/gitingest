@@ -128,9 +128,19 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
     """
     cmd = ["git", "ls-remote"]
     
-    # Add authentication header if token is provided for GitHub repositories
-    if token and is_github_host(url):
-        cmd.extend(["-c", create_git_auth_header(token, url=url)])
+    # Add authentication header if token is provided
+    if token:
+        if is_github_host(url):
+            # Use GitHub-specific authentication
+            cmd.extend(["-c", create_git_auth_header(token, url=url)])
+        else:
+            # For non-GitHub repositories, use generic HTTP basic auth
+            # This works for GitLab, Bitbucket, and other Git hosting services
+            parsed_url = urlparse(url)
+            if parsed_url.hostname:
+                basic_auth = base64.b64encode(f"oauth2:{token}".encode()).decode()
+                auth_header = f"http.https://{parsed_url.hostname}/.extraheader=Authorization: Basic {basic_auth}"
+                cmd.extend(["-c", auth_header])
     
     cmd.extend(["--exit-code", url, "HEAD"])
     

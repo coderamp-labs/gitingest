@@ -210,12 +210,12 @@ async def test_check_repo_exists_with_exception(mocker: MockerFixture) -> None:
 
 
 @pytest.mark.asyncio
-async def test_check_repo_exists_with_token(mocker: MockerFixture) -> None:
+async def test_check_repo_exists_with_github_token(mocker: MockerFixture) -> None:
     """Test ``check_repo_exists`` with GitHub token authentication.
 
     Given a GitHub URL and a token:
     When ``check_repo_exists`` is called,
-    Then it should include the authentication header in the git ls-remote command.
+    Then it should include the GitHub-specific authentication header in the git ls-remote command.
     """
     mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
     mock_process = AsyncMock()
@@ -236,6 +236,38 @@ async def test_check_repo_exists_with_token(mocker: MockerFixture) -> None:
     mock_exec.assert_called_once_with(
         "git", "ls-remote", "-c", "http.extraheader=Authorization: Bearer test_token", 
         "--exit-code", github_url, "HEAD",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_repo_exists_with_non_github_token(mocker: MockerFixture) -> None:
+    """Test ``check_repo_exists`` with non-GitHub token authentication.
+
+    Given a non-GitHub URL and a token:
+    When ``check_repo_exists`` is called,
+    Then it should include the generic HTTP basic auth header in the git ls-remote command.
+    """
+    mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    mock_process = AsyncMock()
+    mock_process.communicate.return_value = (b"", b"")
+    mock_process.returncode = 0
+    mock_exec.return_value = mock_process
+    
+    mock_base64 = mocker.patch("base64.b64encode")
+    mock_base64.return_value.decode.return_value = "encoded_token"
+
+    gitlab_url = "https://gitlab.com/owner/repo"
+    result = await check_repo_exists(gitlab_url, token="test_token")
+
+    assert result is True
+    # Verify that base64 encoding was called for the token
+    mock_base64.assert_called_once_with(b"oauth2:test_token")
+    # Verify that git ls-remote was called with the authentication config
+    mock_exec.assert_called_once_with(
+        "git", "ls-remote", "-c", "http.https://gitlab.com/.extraheader=Authorization: Basic encoded_token", 
+        "--exit-code", gitlab_url, "HEAD",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
