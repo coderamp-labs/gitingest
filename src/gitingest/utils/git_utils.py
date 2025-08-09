@@ -9,10 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 from urllib.parse import urlparse
 
-import httpx
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
-from gitingest.utils.compat_func import removesuffix
 
 from gitingest.utils.logging_config import get_logger
 
@@ -24,23 +21,6 @@ logger = get_logger(__name__)
 
 
 
-
-def is_github_host(url: str) -> bool:
-    """Check if a URL is from a GitHub host (github.com or GitHub Enterprise).
-
-    Parameters
-    ----------
-    url : str
-        The URL to check
-
-    Returns
-    -------
-    bool
-        True if the URL is from a GitHub host, False otherwise
-
-    """
-    hostname = urlparse(url).hostname or ""
-    return hostname.startswith("github.")
 
 
 async def run_command(*args: str) -> tuple[bytes, bytes]:
@@ -115,80 +95,27 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
     url : str
         URL of the Git repository to check.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Returns
     -------
     bool
         ``True`` if the repository exists, ``False`` otherwise.
 
-    Raises
-    ------
-    RuntimeError
-        If the host returns an unrecognised status code.
-
     """
-    headers = {}
-
-    if token and is_github_host(url):
-        host, owner, repo = _parse_github_url(url)
-        # Public GitHub vs. GitHub Enterprise
-        base_api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
-        url = f"{base_api}/repos/{owner}/{repo}"
-        headers["Authorization"] = f"Bearer {token}"
-
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            response = await client.head(url, headers=headers)
-        except httpx.RequestError:
-            return False
-
-    status_code = response.status_code
-
-    if status_code == HTTP_200_OK:
+    try:
+        # Use git ls-remote to check if repository exists
+        cmd = ["git"]
+        if token:
+            cmd += ["-c", create_git_auth_header(token, url=url)]
+        cmd += ["ls-remote", "--heads", url]
+        
+        await run_command(*cmd)
         return True
-    if status_code in {HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND}:
+    except Exception:
         return False
-    msg = f"Unexpected HTTP status {status_code} for {url}"
-    raise RuntimeError(msg)
 
 
-def _parse_github_url(url: str) -> tuple[str, str, str]:
-    """Parse a GitHub URL and return (hostname, owner, repo).
-
-    Parameters
-    ----------
-    url : str
-        The URL of the GitHub repository to parse.
-
-    Returns
-    -------
-    tuple[str, str, str]
-        A tuple containing the hostname, owner, and repository name.
-
-    Raises
-    ------
-    ValueError
-        If the URL is not a valid GitHub repository URL.
-
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        msg = f"URL must start with http:// or https://: {url!r}"
-        raise ValueError(msg)
-
-    if not parsed.hostname or not parsed.hostname.startswith("github."):
-        msg = f"Un-recognised GitHub hostname: {parsed.hostname!r}"
-        raise ValueError(msg)
-
-    parts = removesuffix(parsed.path, ".git").strip("/").split("/")
-    expected_path_length = 2
-    if len(parts) != expected_path_length:
-        msg = f"Path must look like /<owner>/<repo>: {parsed.path!r}"
-        raise ValueError(msg)
-
-    owner, repo = parts
-    return parsed.hostname, owner, repo
 
 
 async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str | None = None) -> list[str]:
@@ -201,7 +128,7 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     ref_type: str
         The type of reference to fetch. Can be "branches" or "tags".
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Returns
     -------
@@ -221,7 +148,7 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     cmd = ["git"]
 
     # Add authentication if needed
-    if token and is_github_host(url):
+    if token:
         cmd += ["-c", create_git_auth_header(token, url=url)]
 
     cmd += ["ls-remote"]
@@ -314,7 +241,7 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     config : CloneConfig
         The configuration for cloning the repository, including subpath and blob flag.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     """
     subpath = config.subpath.lstrip("/")
@@ -333,7 +260,7 @@ async def resolve_commit(config: CloneConfig, token: str | None) -> str:
     config : CloneConfig
         The configuration for cloning the repository.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Returns
     -------
@@ -365,7 +292,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
     pattern : str
         The pattern to use to resolve the commit SHA.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Returns
     -------
@@ -380,7 +307,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
     """
     # Build: git [-c http.<host>/.extraheader=Auth...] ls-remote <url> <pattern>
     cmd: list[str] = ["git"]
-    if token and is_github_host(url):
+    if token:
         cmd += ["-c", create_git_auth_header(token, url=url)]
 
     cmd += ["ls-remote", url, pattern]

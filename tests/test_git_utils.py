@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from gitingest.utils.git_utils import create_git_auth_header, create_git_command, is_github_host
+from gitingest.utils.git_utils import create_git_auth_header, create_git_command
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -118,50 +118,27 @@ def test_create_git_command_helper_calls(
         assert "HEADER" not in cmd
 
 
-@pytest.mark.parametrize(
-    ("url", "expected"),
-    [
-        # GitHub.com URLs
-        ("https://github.com/owner/repo.git", True),
-        ("http://github.com/owner/repo.git", True),
-        ("https://github.com/owner/repo", True),
-        # GitHub Enterprise URLs
-        ("https://github.company.com/owner/repo.git", True),
-        ("https://github.enterprise.org/owner/repo.git", True),
-        ("http://github.internal/owner/repo.git", True),
-        ("https://github.example.co.uk/owner/repo.git", True),
-        # Non-GitHub URLs
-        ("https://gitlab.com/owner/repo.git", False),
-        ("https://bitbucket.org/owner/repo.git", False),
-        ("https://git.example.com/owner/repo.git", False),
-        ("https://mygithub.com/owner/repo.git", False),  # doesn't start with "github."
-        ("https://subgithub.com/owner/repo.git", False),
-        ("https://example.com/github/repo.git", False),
-        # Edge cases
-        ("", False),
-        ("not-a-url", False),
-        ("ftp://github.com/owner/repo.git", True),  # Different protocol but still github.com
-    ],
-)
-def test_is_github_host(url: str, *, expected: bool) -> None:
-    """Test that ``is_github_host`` correctly identifies GitHub and GitHub Enterprise URLs."""
-    assert is_github_host(url) == expected
+
 
 
 @pytest.mark.parametrize(
     ("token", "url", "expected_hostname"),
     [
-        # GitHub.com URLs (default)
+        # GitHub.com URLs
         ("ghp_" + "a" * 36, "https://github.com", "github.com"),
         ("ghp_" + "a" * 36, "https://github.com/owner/repo.git", "github.com"),
         # GitHub Enterprise URLs
         ("ghp_" + "b" * 36, "https://github.company.com", "github.company.com"),
         ("ghp_" + "c" * 36, "https://github.enterprise.org/owner/repo.git", "github.enterprise.org"),
         ("ghp_" + "d" * 36, "http://github.internal", "github.internal"),
+        # Other Git services
+        ("glpat-xxxxxxxxxxxxxxxxxxxx", "https://gitlab.com/owner/repo.git", "gitlab.com"),
+        ("some_token", "https://bitbucket.org/owner/repo.git", "bitbucket.org"),
+        ("custom_token", "https://git.example.com/owner/repo.git", "git.example.com"),
     ],
 )
-def test_create_git_auth_header_with_ghe_url(token: str, url: str, expected_hostname: str) -> None:
-    """Test that ``create_git_auth_header`` handles GitHub Enterprise URLs correctly."""
+def test_create_git_auth_header_with_different_hostnames(token: str, url: str, expected_hostname: str) -> None:
+    """Test that ``create_git_auth_header`` handles different Git service URLs correctly."""
     header = create_git_auth_header(token, url=url)
     expected_basic = base64.b64encode(f"x-oauth-basic:{token}".encode()).decode()
     expected = f"http.https://{expected_hostname}/.extraheader=Authorization: Basic {expected_basic}"

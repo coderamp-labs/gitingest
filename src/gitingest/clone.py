@@ -12,7 +12,6 @@ from gitingest.utils.git_utils import (
     create_git_auth_header,
     create_git_command,
     ensure_git_installed,
-    is_github_host,
     resolve_commit,
     run_command,
 )
