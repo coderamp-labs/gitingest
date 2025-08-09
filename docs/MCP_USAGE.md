@@ -61,8 +61,8 @@ Create a configuration file for your MCP client:
 {
   "mcpServers": {
     "gitingest": {
-      "command": "gitingest",
-      "args": ["--mcp-server"],
+      "command": "python",
+      "args": ["-m", "mcp_server"],
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
