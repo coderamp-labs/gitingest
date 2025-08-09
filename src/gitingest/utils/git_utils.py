@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Iterable
 from urllib.parse import urlparse
 
-import httpx
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
@@ -112,7 +111,7 @@ async def ensure_git_installed() -> None:
 
 
 async def check_repo_exists(url: str, token: str | None = None) -> bool:
-    """Check whether a remote Git repository is reachable.
+    """Check whether a remote Git repository is reachable using git ls-remote.
 
     Parameters
     ----------
@@ -126,35 +125,30 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
     bool
         ``True`` if the repository exists, ``False`` otherwise.
 
-    Raises
-    ------
-    RuntimeError
-        If the host returns an unrecognised status code.
-
     """
-    headers = {}
-
+    cmd = ["git", "ls-remote"]
+    
+    # Add authentication header if token is provided for GitHub repositories
     if token and is_github_host(url):
-        host, owner, repo = _parse_github_url(url)
-        # Public GitHub vs. GitHub Enterprise
-        base_api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
-        url = f"{base_api}/repos/{owner}/{repo}"
-        headers["Authorization"] = f"Bearer {token}"
-
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            response = await client.head(url, headers=headers)
-        except httpx.RequestError:
-            return False
-
-    status_code = response.status_code
-
-    if status_code == HTTP_200_OK:
-        return True
-    if status_code in {HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND}:
+        cmd.extend(["-c", create_git_auth_header(token, url=url)])
+    
+    cmd.extend(["--exit-code", url, "HEAD"])
+    
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        
+        # git ls-remote returns 0 if repository exists and is accessible
+        # returns non-zero if repository doesn't exist or is not accessible
+        return proc.returncode == 0
+        
+    except Exception:
+        # If any exception occurs (e.g., git not available), assume repo doesn't exist
         return False
-    msg = f"Unexpected HTTP status {status_code} for {url}"
-    raise RuntimeError(msg)
 
 
 def _parse_github_url(url: str) -> tuple[str, str, str]:

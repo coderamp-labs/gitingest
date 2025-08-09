@@ -11,9 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
-import httpx
 import pytest
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.clone import clone_repo
 from gitingest.schemas import CloneConfig
