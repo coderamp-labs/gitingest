@@ -99,24 +99,30 @@ async def test_clone_nonexistent_repository(repo_exists_true: AsyncMock) -> None
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("status_code", "expected"),
+    ("returncode", "expected"),
     [
-        (HTTP_200_OK, True),
-        (HTTP_401_UNAUTHORIZED, False),
-        (HTTP_403_FORBIDDEN, False),
-        (HTTP_404_NOT_FOUND, False),
+        (0, True),   # Repository exists and is accessible
+        (2, False),  # Repository doesn't exist or is not accessible
+        (128, False), # Git error (e.g., authentication failure)
     ],
 )
-async def test_check_repo_exists(status_code: int, *, expected: bool, mocker: MockerFixture) -> None:
-    """Verify that ``check_repo_exists`` interprets httpx results correctly."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__.return_value = mock_client  # context-manager protocol
-    mock_client.head.return_value = httpx.Response(status_code=status_code)
-    mocker.patch("httpx.AsyncClient", return_value=mock_client)
+async def test_check_repo_exists(returncode: int, *, expected: bool, mocker: MockerFixture) -> None:
+    """Verify that ``check_repo_exists`` interprets git ls-remote results correctly."""
+    mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    mock_process = AsyncMock()
+    mock_process.communicate.return_value = (b"", b"")
+    mock_process.returncode = returncode
+    mock_exec.return_value = mock_process
 
     result = await check_repo_exists(DEMO_URL)
 
     assert result is expected
+    # Verify that git ls-remote was called with the correct arguments
+    mock_exec.assert_called_once_with(
+        "git", "ls-remote", "--exit-code", DEMO_URL, "HEAD",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
 
 @pytest.mark.asyncio
@@ -188,22 +194,51 @@ async def test_clone_commit(run_command_mock: AsyncMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_check_repo_exists_with_redirect(mocker: MockerFixture) -> None:
-    """Test ``check_repo_exists`` when a redirect (302) is returned.
+async def test_check_repo_exists_with_exception(mocker: MockerFixture) -> None:
+    """Test ``check_repo_exists`` when an exception occurs during git ls-remote.
 
-    Given a URL that responds with "302 Found":
+    Given a git ls-remote command that raises an exception:
     When ``check_repo_exists`` is called,
     Then it should return ``False``, indicating the repo is inaccessible.
     """
     mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
-    mock_process = AsyncMock()
-    mock_process.communicate.return_value = (b"302\n", b"")
-    mock_process.returncode = 0  # Simulate successful request
-    mock_exec.return_value = mock_process
+    mock_exec.side_effect = Exception("Git command failed")
 
     repo_exists = await check_repo_exists(DEMO_URL)
 
     assert repo_exists is False
+
+
+@pytest.mark.asyncio
+async def test_check_repo_exists_with_token(mocker: MockerFixture) -> None:
+    """Test ``check_repo_exists`` with GitHub token authentication.
+
+    Given a GitHub URL and a token:
+    When ``check_repo_exists`` is called,
+    Then it should include the authentication header in the git ls-remote command.
+    """
+    mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    mock_process = AsyncMock()
+    mock_process.communicate.return_value = (b"", b"")
+    mock_process.returncode = 0
+    mock_exec.return_value = mock_process
+    
+    mock_auth_header = mocker.patch("gitingest.utils.git_utils.create_git_auth_header")
+    mock_auth_header.return_value = "http.extraheader=Authorization: Bearer test_token"
+
+    github_url = "https://github.com/owner/repo"
+    result = await check_repo_exists(github_url, token="test_token")
+
+    assert result is True
+    # Verify that authentication header was created
+    mock_auth_header.assert_called_once_with("test_token", url=github_url)
+    # Verify that git ls-remote was called with the authentication config
+    mock_exec.assert_called_once_with(
+        "git", "ls-remote", "-c", "http.extraheader=Authorization: Bearer test_token", 
+        "--exit-code", github_url, "HEAD",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
 
 @pytest.mark.asyncio
