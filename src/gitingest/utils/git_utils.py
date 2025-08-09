@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Iterable
+from typing import TYPE_CHECKING, Iterable
 from urllib.parse import urlparse
 
 import httpx
 from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.utils.compat_func import removesuffix
-from gitingest.utils.exceptions import InvalidGitHubTokenError
+
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -23,10 +22,7 @@ if TYPE_CHECKING:
 # Initialize logger for this module
 logger = get_logger(__name__)
 
-# GitHub Personal-Access tokens (classic + fine-grained).
-#   - ghp_ / gho_ / ghu_ / ghs_ / ghr_  → 36 alphanumerics
-#   - github_pat_                       → 22 alphanumerics + "_" + 59 alphanumerics
-_GITHUB_PAT_PATTERN: Final[str] = r"^(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})$"
+
 
 
 def is_github_host(url: str) -> bool:
@@ -263,9 +259,9 @@ def create_git_command(base_cmd: list[str], local_path: str, url: str, token: st
     local_path : str
         The local path where the git command should be executed.
     url : str
-        The repository URL to check if it's a GitHub repository.
+        The repository URL for authentication.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Returns
     -------
@@ -274,21 +270,20 @@ def create_git_command(base_cmd: list[str], local_path: str, url: str, token: st
 
     """
     cmd = [*base_cmd, "-C", local_path]
-    if token and is_github_host(url):
+    if token:
         cmd += ["-c", create_git_auth_header(token, url=url)]
     return cmd
 
 
-def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
-    """Create a Basic authentication header for GitHub git operations.
+def create_git_auth_header(token: str, url: str) -> str:
+    """Create a Basic authentication header for git operations.
 
     Parameters
     ----------
     token : str
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
     url : str
-        The GitHub URL to create the authentication header for.
-        Defaults to "https://github.com" if not provided.
+        The repository URL to create the authentication header for.
 
     Returns
     -------
@@ -298,34 +293,17 @@ def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
     Raises
     ------
     ValueError
-        If the URL is not a valid GitHub repository URL.
+        If the URL is not a valid repository URL.
 
     """
     hostname = urlparse(url).hostname
     if not hostname:
-        msg = f"Invalid GitHub URL: {url!r}"
+        msg = f"Invalid repository URL: {url!r}"
         raise ValueError(msg)
 
     basic = base64.b64encode(f"x-oauth-basic:{token}".encode()).decode()
     return f"http.https://{hostname}/.extraheader=Authorization: Basic {basic}"
 
-
-def validate_github_token(token: str) -> None:
-    """Validate the format of a GitHub Personal Access Token.
-
-    Parameters
-    ----------
-    token : str
-        GitHub personal access token (PAT) for accessing private repositories.
-
-    Raises
-    ------
-    InvalidGitHubTokenError
-        If the token format is invalid.
-
-    """
-    if not re.fullmatch(_GITHUB_PAT_PATTERN, token):
-        raise InvalidGitHubTokenError
 
 
 async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None:

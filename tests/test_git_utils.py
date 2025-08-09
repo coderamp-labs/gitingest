@@ -1,18 +1,17 @@
 """Tests for the ``git_utils`` module.
 
-These tests validate the ``validate_github_token`` function, which ensures that
-GitHub personal access tokens (PATs) are properly formatted.
+These tests validate various git utility functions for repository operations.
 """
 
 from __future__ import annotations
 
 import base64
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import pytest
 
-from gitingest.utils.exceptions import InvalidGitHubTokenError
-from gitingest.utils.git_utils import create_git_auth_header, create_git_command, is_github_host, validate_github_token
+from gitingest.utils.git_utils import create_git_auth_header, create_git_command, is_github_host
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,39 +19,6 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-@pytest.mark.parametrize(
-    "token",
-    [
-        # Valid tokens: correct prefixes and at least 36 allowed characters afterwards
-        "github_pat_" + "a" * 22 + "_" + "b" * 59,
-        "ghp_" + "A" * 36,
-        "ghu_" + "B" * 36,
-        "ghs_" + "C" * 36,
-        "ghr_" + "D" * 36,
-        "gho_" + "E" * 36,
-    ],
-)
-def test_validate_github_token_valid(token: str) -> None:
-    """validate_github_token should accept properly-formatted tokens."""
-    # Should not raise any exception
-    validate_github_token(token)
-
-
-@pytest.mark.parametrize(
-    "token",
-    [
-        "github_pat_short",  # Too short after prefix
-        "ghp_" + "b" * 35,  # one character short
-        "invalidprefix_" + "c" * 36,  # Wrong prefix
-        "github_pat_" + "!" * 36,  # Disallowed characters
-        "github_pat_" + "a" * 36,  # Too short after 'github_pat_' prefix
-        "",  # Empty string
-    ],
-)
-def test_validate_github_token_invalid(token: str) -> None:
-    """Test that ``validate_github_token`` raises ``InvalidGitHubTokenError`` on malformed tokens."""
-    with pytest.raises(InvalidGitHubTokenError):
-        validate_github_token(token)
 
 
 @pytest.mark.parametrize(
@@ -72,15 +38,18 @@ def test_validate_github_token_invalid(token: str) -> None:
             "ghp_" + "d" * 36,
             [
                 "-c",
-                create_git_auth_header("ghp_" + "d" * 36),
-            ],  # Auth header expected for GitHub URL + token
+                create_git_auth_header("ghp_" + "d" * 36, "https://github.com/owner/repo.git"),
+            ],  # Auth header expected when token is provided
         ),
         (
             ["git", "clone"],
             "/some/path",
             "https://gitlab.com/owner/repo.git",
             "ghp_" + "e" * 36,
-            [],  # No auth header for non-GitHub URL even if token provided
+            [
+                "-c",
+                create_git_auth_header("ghp_" + "e" * 36, "https://gitlab.com/owner/repo.git"),
+            ],  # Auth header expected for any URL when token is provided
         ),
     ],
 )
@@ -103,17 +72,19 @@ def test_create_git_command(
 
 
 @pytest.mark.parametrize(
-    "token",
+    ("token", "url"),
     [
-        "ghp_abcdefghijklmnopqrstuvwxyz012345",  # typical ghp_ token
-        "github_pat_1234567890abcdef1234567890abcdef1234",
+        ("ghp_abcdefghijklmnopqrstuvwxyz012345", "https://github.com/owner/repo.git"),  # typical ghp_ token
+        ("github_pat_1234567890abcdef1234567890abcdef1234", "https://github.com/owner/repo.git"),
+        ("some_token", "https://gitlab.com/owner/repo.git"),  # non-GitHub URL
     ],
 )
-def test_create_git_auth_header(token: str) -> None:
+def test_create_git_auth_header(token: str, url: str) -> None:
     """Test that ``create_git_auth_header`` produces correct base64-encoded header."""
-    header = create_git_auth_header(token)
+    header = create_git_auth_header(token, url)
     expected_basic = base64.b64encode(f"x-oauth-basic:{token}".encode()).decode()
-    expected = f"http.https://github.com/.extraheader=Authorization: Basic {expected_basic}"
+    hostname = urlparse(url).hostname
+    expected = f"http.https://{hostname}/.extraheader=Authorization: Basic {expected_basic}"
     assert header == expected
 
 
@@ -122,7 +93,7 @@ def test_create_git_auth_header(token: str) -> None:
     [
         ("https://github.com/foo/bar.git", "ghp_" + "f" * 36, True),
         ("https://github.com/foo/bar.git", None, False),
-        ("https://gitlab.com/foo/bar.git", "ghp_" + "g" * 36, False),
+        ("https://gitlab.com/foo/bar.git", "ghp_" + "g" * 36, True),  # Now called for all URLs with token
     ],
 )
 def test_create_git_command_helper_calls(

@@ -40,7 +40,7 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     config : CloneConfig
         The configuration for cloning the repository.
     token : str | None
-        GitHub personal access token (PAT) for accessing private repositories.
+        Personal access token (PAT) for accessing private repositories.
 
     Raises
     ------
@@ -84,7 +84,7 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     logger.debug("Resolved commit", extra={"commit": commit})
 
     clone_cmd = ["git"]
-    if token and is_github_host(url):
+    if token:
         clone_cmd += ["-c", create_git_auth_header(token, url=url)]
 
     clone_cmd += ["clone", "--single-branch", "--no-checkout", "--depth=1"]
