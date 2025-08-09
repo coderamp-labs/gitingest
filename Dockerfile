@@ -20,9 +20,15 @@ FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb5
 
 ARG UID=1000
 ARG GID=1000
+ARG APP_REPOSITORY=https://github.com/coderamp-labs/gitingest
+ARG APP_VERSION=unknown
+ARG APP_VERSION_URL=https://github.com/coderamp-labs/gitingest
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_REPOSITORY=${APP_REPOSITORY} \
+    APP_VERSION=${APP_VERSION} \
+    APP_VERSION_URL=${APP_VERSION_URL}
 
 RUN set -eux; \
     apt-get update; \
@@ -44,4 +50,4 @@ USER appuser
 
 EXPOSE 8000
 EXPOSE 9090
-CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "server"]

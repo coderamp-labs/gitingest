@@ -1,12 +1,13 @@
 [project]
 name = "gitingest"
-version = "0.2.1"
+version = "0.3.1"
 description="CLI tool to analyze and create text dumps of codebases for LLMs"
 readme = {file = "README.md", content-type = "text/markdown" }
 requires-python = ">= 3.8"
 dependencies = [
     "click>=8.0.0",
     "httpx",
+    "loguru>=0.7.0",
     "pathspec>=0.12.1",
     "pydantic",
     "python-dotenv",
@@ -39,7 +40,6 @@ dev = [
     "pre-commit",
     "pytest",
     "pytest-asyncio",
-    "pytest-cov",
     "pytest-mock",
 ]
 
@@ -96,7 +96,6 @@ ignore = [  # https://docs.astral.sh/ruff/rules/...
 
     # TODO: fix the following issues:
     "TD003", # missing-todo-link, TODO: add issue links
-    "T201", # print, TODO: replace with logging
     "S108", # hardcoded-temp-file, TODO: replace with tempfile
     "BLE001", # blind-except, TODO: replace with specific exceptions
     "FAST003", # fast-api-unused-path-parameter, TODO: fix

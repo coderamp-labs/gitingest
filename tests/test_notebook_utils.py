@@ -69,8 +69,7 @@ def test_process_notebook_with_worksheets(write_notebook: WriteNotebookFunc) -> 
     nb_with = write_notebook("with_worksheets.ipynb", with_worksheets)
     nb_without = write_notebook("without_worksheets.ipynb", without_worksheets)
 
-    with pytest.warns(DeprecationWarning, match="Worksheets are deprecated as of IPEP-17."):
-        result_with = process_notebook(nb_with)
+    result_with = process_notebook(nb_with)
 
     # Should not raise a warning
     result_without = process_notebook(nb_without)
@@ -104,22 +103,9 @@ def test_process_notebook_multiple_worksheets(write_notebook: WriteNotebookFunc)
     nb_multi = write_notebook("multiple_worksheets.ipynb", multi_worksheets)
     nb_single = write_notebook("single_worksheet.ipynb", single_worksheet)
 
-    # Expect DeprecationWarning + UserWarning
-    with pytest.warns(
-        DeprecationWarning,
-        match="Worksheets are deprecated as of IPEP-17. Consider updating the notebook.",
-    ), pytest.warns(
-        UserWarning,
-        match="Multiple worksheets detected. Combining all worksheets into a single script.",
-    ):
-        result_multi = process_notebook(nb_multi)
+    result_multi = process_notebook(nb_multi)
 
-    # Expect DeprecationWarning only
-    with pytest.warns(
-        DeprecationWarning,
-        match="Worksheets are deprecated as of IPEP-17. Consider updating the notebook.",
-    ):
-        result_single = process_notebook(nb_single)
+    result_single = process_notebook(nb_single)
 
     assert result_multi != result_single, "Two worksheets should produce more content than one."
     assert len(result_multi) > len(result_single), "The multi-worksheet notebook should have extra code content."

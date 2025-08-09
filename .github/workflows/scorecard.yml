@@ -27,18 +27,18 @@ jobs:
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        uses: actions/checkout@8edcb1bdb4e267140fa742c62e395cd74f332709
         with:
           persist-credentials: false
 
       - name: Run Scorecard
-        uses: ossf/scorecard-action@05b42c624433fc40578a4040d5cf5e36ddca8cde
+        uses: ossf/scorecard-action@f35c64557cf912815708bb1126d9948f3e459487
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true  # enables the public badge
 
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@d6bbdef45e766d081b84a2def353b0055f728d3e # v3.29.3
+        uses: github/codeql-action/upload-sarif@a4e1a019f5e24960714ff6296aee04b736cbc3cf # v3.29.6
         with:
           sarif_file: results.sarif

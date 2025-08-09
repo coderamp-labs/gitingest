@@ -14,13 +14,18 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+# Import logging configuration first to intercept all logging
+from gitingest.utils.logging_config import get_logger
 from server.metrics_server import start_metrics_server
 from server.routers import dynamic, index, ingest
-from server.server_config import templates
-from server.server_utils import lifespan, limiter, rate_limit_exception_handler
+from server.server_config import get_version_info, templates
+from server.server_utils import limiter, rate_limit_exception_handler
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # Initialize Sentry SDK if enabled
 if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
@@ -50,8 +55,8 @@ if os.getenv("GITINGEST_SENTRY_ENABLED") is not None:
             environment=sentry_environment,
         )
 
-# Initialize the FastAPI application with lifespan
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+# Initialize the FastAPI application
+app = FastAPI(docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 
 # Register the custom exception handler for rate limits
@@ -164,7 +169,9 @@ async def custom_swagger_ui(request: Request) -> HTMLResponse:
     - **HTMLResponse**: Custom Swagger UI documentation page
 
     """
-    return templates.TemplateResponse("swagger_ui.jinja", {"request": request})
+    context = {"request": request}
+    context.update(get_version_info())
+    return templates.TemplateResponse("swagger_ui.jinja", context)
 
 
 @app.get("/api", include_in_schema=True)

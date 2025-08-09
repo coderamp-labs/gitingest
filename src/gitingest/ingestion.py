@@ -9,9 +9,13 @@ from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTE
 from gitingest.output_formatter import format_node
 from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
+from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 
 def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
@@ -37,16 +41,30 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
         If the path cannot be found, is not a file, or the file has no content.
 
     """
+    logger.info(
+        "Starting file ingestion",
+        extra={
+            "slug": query.slug,
+            "subpath": query.subpath,
+            "local_path": str(query.local_path),
+            "max_file_size": query.max_file_size,
+        },
+    )
+
     subpath = Path(query.subpath.strip("/")).as_posix()
     path = query.local_path / subpath
 
     if not path.exists():
+        logger.error("Path not found", extra={"path": str(path), "slug": query.slug})
         msg = f"{query.slug} cannot be found"
         raise ValueError(msg)
 
     if (query.type and query.type == "blob") or query.local_path.is_file():
         # TODO: We do this wrong! We should still check the branch and commit!
+        logger.info("Processing single file", extra={"file_path": str(path)})
+
         if not path.is_file():
+            logger.error("Expected file but found non-file", extra={"path": str(path)})
             msg = f"Path {path} is not a file"
             raise ValueError(msg)
 
@@ -62,10 +80,20 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
         )
 
         if not file_node.content:
+            logger.error("File has no content", extra={"file_name": file_node.name})
             msg = f"File {file_node.name} has no content"
             raise ValueError(msg)
 
+        logger.info(
+            "Single file processing completed",
+            extra={
+                "file_name": file_node.name,
+                "file_size": file_node.size,
+            },
+        )
         return format_node(file_node, query=query)
+
+    logger.info("Processing directory", extra={"directory_path": str(path)})
 
     root_node = FileSystemNode(
         name=path.name,
@@ -77,6 +105,17 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
     stats = FileSystemStats()
 
     _process_node(node=root_node, query=query, stats=stats)
+
+    logger.info(
+        "Directory processing completed",
+        extra={
+            "total_files": root_node.file_count,
+            "total_directories": root_node.dir_count,
+            "total_size_bytes": root_node.size,
+            "stats_total_files": stats.total_files,
+            "stats_total_size": stats.total_size,
+        },
+    )
 
     return format_node(root_node, query=query)
 
@@ -111,7 +150,14 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
             _process_symlink(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_file():
             if sub_path.stat().st_size > query.max_file_size:
-                print(f"Skipping file {sub_path}: would exceed max file size limit")
+                logger.debug(
+                    "Skipping file: would exceed max file size limit",
+                    extra={
+                        "file_path": str(sub_path),
+                        "file_size": sub_path.stat().st_size,
+                        "max_file_size": query.max_file_size,
+                    },
+                )
                 continue
             _process_file(path=sub_path, parent_node=node, stats=stats, local_path=query.local_path)
         elif sub_path.is_dir():
@@ -133,7 +179,7 @@ def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystem
             node.file_count += child_directory_node.file_count
             node.dir_count += 1 + child_directory_node.dir_count
         else:
-            print(f"Warning: {sub_path} is an unknown file type, skipping")
+            logger.warning("Unknown file type, skipping", extra={"file_path": str(sub_path)})
 
     node.sort_children()
 
@@ -186,12 +232,27 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
 
     """
     if stats.total_files + 1 > MAX_FILES:
-        print(f"Maximum file limit ({MAX_FILES}) reached")
+        logger.warning(
+            "Maximum file limit reached",
+            extra={
+                "current_files": stats.total_files,
+                "max_files": MAX_FILES,
+                "file_path": str(path),
+            },
+        )
         return
 
     file_size = path.stat().st_size
     if stats.total_size + file_size > MAX_TOTAL_SIZE_BYTES:
-        print(f"Skipping file {path}: would exceed total size limit")
+        logger.warning(
+            "Skipping file: would exceed total size limit",
+            extra={
+                "file_path": str(path),
+                "file_size": file_size,
+                "current_total_size": stats.total_size,
+                "max_total_size": MAX_TOTAL_SIZE_BYTES,
+            },
+        )
         return
 
     stats.total_files += 1
@@ -232,15 +293,33 @@ def limit_exceeded(stats: FileSystemStats, depth: int) -> bool:
 
     """
     if depth > MAX_DIRECTORY_DEPTH:
-        print(f"Maximum depth limit ({MAX_DIRECTORY_DEPTH}) reached")
+        logger.warning(
+            "Maximum directory depth limit reached",
+            extra={
+                "current_depth": depth,
+                "max_depth": MAX_DIRECTORY_DEPTH,
+            },
+        )
         return True
 
     if stats.total_files >= MAX_FILES:
-        print(f"Maximum file limit ({MAX_FILES}) reached")
+        logger.warning(
+            "Maximum file limit reached",
+            extra={
+                "current_files": stats.total_files,
+                "max_files": MAX_FILES,
+            },
+        )
         return True  # TODO: end recursion
 
     if stats.total_size >= MAX_TOTAL_SIZE_BYTES:
-        print(f"Maxumum total size limit ({MAX_TOTAL_SIZE_BYTES / 1024 / 1024:.1f}MB) reached")
+        logger.warning(
+            "Maximum total size limit reached",
+            extra={
+                "current_size_mb": stats.total_size / 1024 / 1024,
+                "max_size_mb": MAX_TOTAL_SIZE_BYTES / 1024 / 1024,
+            },
+        )
         return True  # TODO: end recursion
 
     return False

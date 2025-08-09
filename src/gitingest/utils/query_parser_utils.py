@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import string
-import warnings
 from typing import TYPE_CHECKING, cast
 from urllib.parse import ParseResult, unquote, urlparse
 
 from gitingest.utils.compat_typing import StrEnum
 from gitingest.utils.git_utils import _resolve_ref_to_sha, check_repo_exists
+from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
 
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 HEX_DIGITS: set[str] = set(string.hexdigits)
 
@@ -56,7 +58,7 @@ async def _fallback_to_root(query: IngestionQuery, token: str | None, warn_msg: 
     url = cast("str", query.url)
     query.commit = await _resolve_ref_to_sha(url, pattern="HEAD", token=token)
     if warn_msg:
-        warnings.warn(warn_msg, RuntimeWarning, stacklevel=3)
+        logger.warning(warn_msg)
     return query
 
 

@@ -1,6 +1,7 @@
 # Contributing to Gitingest
 
-Thanks for your interest in contributing to **Gitingest** 🚀 Our goal is to keep the codebase friendly to first-time contributors.
+Thanks for your interest in contributing to **Gitingest** 🚀 Our goal is to keep the codebase friendly to first-time
+contributors.
 If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK9EC).
 
 ---
@@ -10,7 +11,8 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
 - **Create an Issue** – found a bug or have a feature idea?
   [Open an issue](https://github.com/coderamp-labs/gitingest/issues/new).
 - **Spread the Word** – tweet, blog, or tell a friend.
-- **Use Gitingest** – real-world usage gives the best feedback. File issues or ping us on [Discord](https://discord.com/invite/zerRaGK9EC) with anything you notice.
+- **Use Gitingest** – real-world usage gives the best feedback. File issues or ping us
+  on [Discord](https://discord.com/invite/zerRaGK9EC) with anything you notice.
 
 ---
 
@@ -65,11 +67,10 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
 9. **Run the local server** to sanity-check:
 
     ```bash
-    cd src
-    uvicorn server.main:app
+    python -m server
     ```
 
-    Open [http://localhost:8000](http://localhost:8000) to confirm everything works.
+   Open [http://localhost:8000](http://localhost:8000) to confirm everything works.
 
 10. **Commit** (signed):
 
@@ -86,6 +87,10 @@ If you ever get stuck, reach out on [Discord](https://discord.com/invite/zerRaGK
     ```
 
 12. **Open a pull request** on GitHub with a clear description.
+
+    > **Important:** Pull request titles **must follow
+    the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification**. This helps with
+    changelogs and automated releases.
 
 13. **Iterate** on any review feedback—update your branch and repeat **6 – 11** as needed.
 
