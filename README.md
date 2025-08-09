@@ -165,7 +165,7 @@ Gitingest includes an MCP server that allows LLMs to directly access repository 
 
 ```bash
 # Start the MCP server with stdio transport
-gitingest --mcp-server
+python -m mcp_server
 ```
 
 ### Available Tools
@@ -188,8 +188,8 @@ Use the provided `examples/mcp-config.json` to configure the MCP server in your 
 {
   "mcpServers": {
     "gitingest": {
-      "command": "gitingest",
-      "args": ["--mcp-server"],
+      "command": "python",
+      "args": ["-m", "mcp_server"],
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
