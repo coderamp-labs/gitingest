@@ -9,11 +9,11 @@ import git
 
 from gitingest.config import DEFAULT_TIMEOUT
 from gitingest.utils.git_utils import (
-    _add_token_to_url,
     check_repo_exists,
     checkout_partial_clone,
     create_git_repo,
     ensure_git_installed,
+    git_auth_context,
     is_github_host,
     resolve_commit,
 )
@@ -86,12 +86,7 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     commit = await resolve_commit(config, token=token)
     logger.debug("Resolved commit", extra={"commit": commit})
 
-    # Prepare URL with authentication if needed
-    clone_url = url
-    if token and is_github_host(url):
-        clone_url = _add_token_to_url(url, token)
-
-    # Clone the repository using GitPython
+    # Clone the repository using GitPython with proper authentication
     logger.info("Executing git clone operation", extra={"url": "<redacted>", "local_path": local_path})
     try:
         clone_kwargs = {
@@ -100,17 +95,20 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
             "depth": 1,
         }
 
-        if partial_clone:
-            # GitPython doesn't directly support --filter and --sparse in clone
-            # We'll need to use git.Git() for the initial clone with these options
-            git_cmd = git.Git()
-            cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+        with git_auth_context(url, token) as (git_cmd, auth_url):
             if partial_clone:
+                # For partial clones, use git.Git() with filter and sparse options
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
                 cmd_args.extend(["--filter=blob:none", "--sparse"])
-            cmd_args.extend([clone_url, local_path])
-            git_cmd.clone(*cmd_args)
-        else:
-            git.Repo.clone_from(clone_url, local_path, **clone_kwargs)
+                cmd_args.extend([auth_url, local_path])
+                git_cmd.clone(*cmd_args)
+            elif token and is_github_host(url):
+                # For authenticated GitHub repos, use git_cmd with auth URL
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1", auth_url, local_path]
+                git_cmd.clone(*cmd_args)
+            else:
+                # For non-authenticated repos, use the standard GitPython method
+                git.Repo.clone_from(url, local_path, **clone_kwargs)
 
         logger.info("Git clone completed successfully")
     except git.GitCommandError as exc:

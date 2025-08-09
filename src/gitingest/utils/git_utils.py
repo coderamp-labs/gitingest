@@ -7,8 +7,9 @@ import base64
 import os
 import re
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Iterable
+from typing import TYPE_CHECKING, Final, Generator, Iterable
 from urllib.parse import urlparse, urlunparse
 
 import git
@@ -217,13 +218,6 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
 
     # Use GitPython to get remote references
     try:
-        git_cmd = git.Git()
-
-        # Prepare authentication if needed
-        if token and is_github_host(url):
-            auth_url = _add_token_to_url(url, token)
-            url = auth_url
-
         fetch_tags = ref_type == "tags"
         to_fetch = "tags" if fetch_tags else "heads"
 
@@ -233,8 +227,11 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
             cmd_args.append("--refs")  # Filter out peeled tag objects
         cmd_args.append(url)
 
-        # Run the command using git_cmd.ls_remote() method
-        output = git_cmd.ls_remote(*cmd_args)
+        # Run the command with proper authentication
+        with git_auth_context(url, token) as (git_cmd, auth_url):
+            # Replace the URL in cmd_args with the authenticated URL
+            cmd_args[-1] = auth_url  # URL is the last argument
+            output = git_cmd.ls_remote(*cmd_args)
 
         # Parse output
         return [
@@ -316,6 +313,70 @@ def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
 
     basic = base64.b64encode(f"x-oauth-basic:{token}".encode()).decode()
     return f"http.https://{hostname}/.extraheader=Authorization: Basic {basic}"
+
+
+def create_authenticated_url(url: str, token: str | None = None) -> str:
+    """Create an authenticated URL for Git operations.
+
+    This is the safest approach for multi-user environments - no global state.
+
+    Parameters
+    ----------
+    url : str
+        The repository URL.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Returns
+    -------
+    str
+        The URL with authentication embedded (for GitHub) or original URL.
+
+    """
+    if not (token and is_github_host(url)):
+        return url
+
+    parsed = urlparse(url)
+    # Add token as username in URL (GitHub supports this)
+    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )
+
+
+@contextmanager
+def git_auth_context(url: str, token: str | None = None) -> Generator[tuple[git.Git, str]]:
+    """Context manager that provides Git command and authenticated URL.
+
+    Returns both a Git command object and the authenticated URL to use.
+    This avoids any global state contamination between users.
+
+    Parameters
+    ----------
+    url : str
+        The repository URL to check if authentication is needed.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Yields
+    ------
+    Generator[tuple[git.Git, str]]
+        Tuple of (Git command object, authenticated URL to use).
+
+    """
+    git_cmd = git.Git()
+    auth_url = create_authenticated_url(url, token)
+    yield git_cmd, auth_url
 
 
 def validate_github_token(token: str) -> None:
@@ -419,15 +480,9 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
 
     """
     try:
-        git_cmd = git.Git()
-
-        # Prepare authentication if needed
-        auth_url = url
-        if token and is_github_host(url):
-            auth_url = _add_token_to_url(url, token)
-
-        # Execute ls-remote command
-        output = git_cmd.ls_remote(auth_url, pattern)
+        # Execute ls-remote command with proper authentication
+        with git_auth_context(url, token) as (git_cmd, auth_url):
+            output = git_cmd.ls_remote(auth_url, pattern)
         lines = output.splitlines()
 
         sha = _pick_commit_sha(lines)
@@ -475,37 +530,3 @@ def _pick_commit_sha(lines: Iterable[str]) -> str | None:
             first_non_peeled = sha
 
     return first_non_peeled  # branch or lightweight tag (or None)
-
-
-def _add_token_to_url(url: str, token: str) -> str:
-    """Add authentication token to GitHub URL.
-
-    Parameters
-    ----------
-    url : str
-        The original GitHub URL.
-    token : str
-        The GitHub token to add.
-
-    Returns
-    -------
-    str
-        The URL with embedded authentication.
-
-    """
-    parsed = urlparse(url)
-    # Add token as username in URL (GitHub supports this)
-    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
-    if parsed.port:
-        netloc += f":{parsed.port}"
-
-    return urlunparse(
-        (
-            parsed.scheme,
-            netloc,
-            parsed.path,
-            parsed.params,
-            parsed.query,
-            parsed.fragment,
-        ),
-    )
