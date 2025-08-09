@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/coderamp-labs/gitingest/compare/v0.3.1...v0.4.0) (2025-08-09)
+
+
+### Features
+
+* **web:** add version info display ([#483](https://github.com/coderamp-labs/gitingest/issues/483)) ([867c2d9](https://github.com/coderamp-labs/gitingest/commit/867c2d904e57ef2b329ba863661062cc92be39c9))
+
 ## [0.3.1](https://github.com/coderamp-labs/gitingest/compare/v0.3.0...v0.3.1) (2025-07-31)
 
 
