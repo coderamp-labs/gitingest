@@ -491,7 +491,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             raise ValueError(msg)
 
     except git.GitCommandError as exc:
-        msg = f"Failed to resolve {pattern} in {url}:{os.linesep}{exc}"
+        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
         raise ValueError(msg) from exc
 
     return sha
