@@ -191,7 +191,7 @@ class TestHandleIngestRepository:
                 "branch": "develop",
                 "include_gitignored": True,
                 "include_submodules": True,
-                "token": "ghp_test_token",
+                "token": "test_token_123",
             }
 
             result = await _handle_ingest_repository(args)
