@@ -136,8 +136,8 @@ async def test_clone_without_commit(repo_exists_true: AsyncMock, gitpython_mocks
     mock_repo = gitpython_mocks["repo"]
     mock_clone_from = gitpython_mocks["clone_from"]
 
-    # Should have resolved the commit via execute
-    mock_git_cmd.execute.assert_called()
+    # Should have resolved the commit via ls_remote
+    mock_git_cmd.ls_remote.assert_called()
     # Should have cloned the repo
     mock_clone_from.assert_called_once()
     # Should have fetched and checked out
@@ -179,13 +179,13 @@ async def test_clone_with_specific_subpath(gitpython_mocks: dict) -> None:
 
     await clone_repo(clone_config)
 
-    # Verify partial clone (using git.execute instead of Repo.clone_from)
+    # Verify partial clone (using git.clone instead of Repo.clone_from)
     mock_git_cmd = gitpython_mocks["git_cmd"]
-    mock_git_cmd.execute.assert_called()
+    mock_git_cmd.clone.assert_called()
 
     # Verify sparse checkout was configured
     mock_repo = gitpython_mocks["repo"]
-    mock_repo.git.execute.assert_called()
+    mock_repo.git.sparse_checkout.assert_called()
 
 
 @pytest.mark.asyncio
