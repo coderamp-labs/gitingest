@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from gitingest.utils.ignore_patterns import DEFAULT_IGNORE_PATTERNS
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _PATTERN_SPLIT_RE = re.compile(r"[,\s]+")
 
