@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 )
 @click.option(
     "--host",
-    default="0.0.0.0",
+    default="127.0.0.1",  # nosec: bind to localhost only for security
     show_default=True,
     help="Host to bind TCP server (only used with --transport tcp)",
 )
@@ -55,31 +55,31 @@ def main(transport: str, host: str, port: int) -> None:
 
 
 def _main_stdio() -> None:
-    """Main function for stdio transport."""
+    """Start MCP server with stdio transport."""
     try:
         logger.info("Starting Gitingest MCP server with stdio transport")
         # FastMCP gère son propre event loop pour stdio
-        from mcp_server.main import mcp
+        from mcp_server.main import mcp  # noqa: PLC0415 # pylint: disable=import-outside-toplevel
 
         mcp.run(transport="stdio")
     except KeyboardInterrupt:
         logger.info("MCP server stopped by user")
     except Exception as exc:
-        logger.error(f"Error starting MCP server: {exc}", exc_info=True)
+        logger.exception("Error starting MCP server")
         raise click.Abort from exc
 
 
 async def _async_main_tcp(host: str, port: int) -> None:
     """Async main function for TCP transport."""
     try:
-        logger.info(f"Starting Gitingest MCP server with TCP transport on {host}:{port}")
+        logger.info("Starting Gitingest MCP server with TCP transport on %s:%s", host, port)
         await start_mcp_server_tcp(host, port)
     except KeyboardInterrupt:
         logger.info("MCP server stopped by user")
     except Exception as exc:
-        logger.error(f"Error starting MCP server: {exc}", exc_info=True)
+        logger.exception("Error starting MCP server")
         raise click.Abort from exc
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pylint: disable=no-value-for-parameter
