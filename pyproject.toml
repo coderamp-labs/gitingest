@@ -48,6 +48,7 @@ server = [
     "boto3>=1.28.0",  # AWS SDK for S3 support
     "fastapi[standard]>=0.109.1",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2024-38)
     "prometheus-client",
+    "psutil>=5.9.0",  # Memory monitoring for optimization
     "sentry-sdk[fastapi]",
     "slowapi",
     "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)

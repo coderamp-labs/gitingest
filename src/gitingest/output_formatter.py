@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ssl
+from io import StringIO
 from typing import TYPE_CHECKING
 
 import requests.exceptions
@@ -122,8 +123,32 @@ def _gather_file_contents(node: FileSystemNode) -> str:
     if node.type != FileSystemNodeType.DIRECTORY:
         return node.content_string
 
-    # Recursively gather contents of all files under the current directory
-    return "\n".join(_gather_file_contents(child) for child in node.children)
+    # Use StringIO for memory-efficient string concatenation
+    content_buffer = StringIO()
+    try:
+        _gather_file_contents_recursive(node, content_buffer)
+        return content_buffer.getvalue()
+    finally:
+        content_buffer.close()
+
+
+def _gather_file_contents_recursive(node: FileSystemNode, buffer: StringIO) -> None:
+    """Recursively gather file contents into a StringIO buffer to reduce memory usage.
+
+    Parameters
+    ----------
+    node : FileSystemNode
+        The current directory or file node being processed.
+    buffer : StringIO
+        Buffer to write content to.
+
+    """
+    if node.type != FileSystemNodeType.DIRECTORY:
+        buffer.write(node.content_string)
+        return
+
+    for child in node.children:
+        _gather_file_contents_recursive(child, buffer)
 
 
 def _create_tree_structure(

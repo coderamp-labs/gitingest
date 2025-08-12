@@ -5,6 +5,7 @@ httpx
 loguru>=0.7.0
 pathspec>=0.12.1
 prometheus-client
+psutil>=5.9.0  # Memory monitoring for optimization
 pydantic
 python-dotenv
 sentry-sdk[fastapi]

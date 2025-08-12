@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -302,7 +303,19 @@ async def process_query(
 
     try:
         summary, tree, content = ingest_query(query)
-        digest_content = tree + "\n" + content
+
+        # Clean up repository immediately after ingestion to free memory
+        _cleanup_repository(clone_config)
+
+        # Use StringIO for memory-efficient string concatenation
+        digest_buffer = StringIO()
+        try:
+            digest_buffer.write(tree)
+            digest_buffer.write("\n")
+            digest_buffer.write(content)
+            digest_content = digest_buffer.getvalue()
+        finally:
+            digest_buffer.close()
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
@@ -326,8 +339,7 @@ async def process_query(
 
     digest_url = _generate_digest_url(query)
 
-    # Clean up the repository after successful processing
-    _cleanup_repository(clone_config)
+    # Repository was already cleaned up after ingestion to free memory earlier
 
     return IngestSuccessResponse(
         repo_url=input_text,

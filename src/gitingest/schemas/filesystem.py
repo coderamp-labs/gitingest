@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from io import StringIO
 from typing import TYPE_CHECKING
 
 from gitingest.utils.compat_func import readlink
@@ -155,7 +156,34 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
             return "Error: Unable to decode file with available encodings"
 
         try:
-            with self.path.open(encoding=good_enc) as fp:
-                return fp.read()
+            return self._read_file_content_streaming(good_enc)
         except (OSError, UnicodeDecodeError) as exc:
             return f"Error reading file with {good_enc!r}: {exc}"
+
+    def _read_file_content_streaming(self, encoding: str, chunk_size: int = 8192) -> str:
+        """Read file content using streaming to reduce memory usage.
+
+        Parameters
+        ----------
+        encoding : str
+            The encoding to use for reading the file.
+        chunk_size : int
+            Size of chunks to read at a time (default: 8192 bytes).
+
+        Returns
+        -------
+        str
+            The file content.
+
+        """
+        content_buffer = StringIO()
+        try:
+            with self.path.open(encoding=encoding) as fp:
+                while True:
+                    chunk = fp.read(chunk_size)
+                    if not chunk:
+                        break
+                    content_buffer.write(chunk)
+            return content_buffer.getvalue()
+        finally:
+            content_buffer.close()
