@@ -20,7 +20,8 @@ async def main():
             # Call the ingest_repository tool
             print("\n📞 Appel de l'outil ingest_repository...")
             result = await session.call_tool(
-                "ingest_repository", {"source": "https://github.com/coderamp-labs/gitingest"}
+                "ingest_repository",
+                {"source": "https://github.com/coderamp-labs/gitingest"},
             )
             print(result)
 

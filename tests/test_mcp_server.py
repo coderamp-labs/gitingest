@@ -286,7 +286,8 @@ class TestHandleIngestRepository:
             # Check that info message was logged for start
             assert mock_logger.info.call_count == 1
             mock_logger.info.assert_called_with(
-                "Starting MCP ingestion", extra={"source": "https://github.com/test/repo"}
+                "Starting MCP ingestion",
+                extra={"source": "https://github.com/test/repo"},
             )
 
     @pytest.mark.asyncio
