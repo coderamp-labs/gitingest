@@ -54,7 +54,7 @@ server = [
 ]
 
 mcp = [
-    "mcp>=1.0.0",  # Model Context Protocol
+    "mcp==1.12.4",  # Model Context Protocol
     "pydantic>=2.0.0",
 ]
 
