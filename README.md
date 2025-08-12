@@ -198,8 +198,6 @@ Use the provided `examples/mcp-config.json` to configure the MCP server in your 
 }
 ```
 
-
-
 ## 🐍 Python package usage
 
 ```python
