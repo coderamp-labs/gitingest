@@ -175,6 +175,7 @@ async def _async_main(
     # Check if MCP server mode is requested
     if mcp_server:
         from gitingest.mcp_server import start_mcp_server
+
         await start_mcp_server()
         return
 

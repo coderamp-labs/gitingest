@@ -2,7 +2,8 @@
 
 import asyncio
 import functools
-from typing import Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 from gitingest.utils.compat_typing import ParamSpec
 from gitingest.utils.exceptions import AsyncTimeoutError

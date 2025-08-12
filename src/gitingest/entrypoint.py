@@ -7,9 +7,10 @@ import errno
 import shutil
 import stat
 import sys
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncGenerator, Callable
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from gitingest.clone import clone_repo

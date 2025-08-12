@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
-import os
-from typing import Any, Dict, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from gitingest.entrypoint import ingest_async
 from gitingest.utils.logging_config import get_logger
@@ -19,6 +17,7 @@ logger = get_logger(__name__)
 
 # Create the MCP server instance
 app = Server("gitingest")
+
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
@@ -36,61 +35,62 @@ async def list_tools() -> list[Tool]:
                         "examples": [
                             "https://github.com/coderamp-labs/gitingest",
                             "/path/to/local/repo",
-                            "."
-                        ]
+                            ".",
+                        ],
                     },
                     "max_file_size": {
                         "type": "integer",
                         "description": "Maximum file size to process in bytes",
-                        "default": 10485760
+                        "default": 10485760,
                     },
                     "include_patterns": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Shell-style patterns to include"
+                        "description": "Shell-style patterns to include",
                     },
                     "exclude_patterns": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Shell-style patterns to exclude"
+                        "description": "Shell-style patterns to exclude",
                     },
                     "branch": {
                         "type": "string",
-                        "description": "Branch to clone and ingest"
+                        "description": "Branch to clone and ingest",
                     },
                     "include_gitignored": {
                         "type": "boolean",
                         "description": "Include files matched by .gitignore",
-                        "default": False
+                        "default": False,
                     },
                     "include_submodules": {
                         "type": "boolean",
                         "description": "Include repository's submodules",
-                        "default": False
+                        "default": False,
                     },
                     "token": {
                         "type": "string",
-                        "description": "GitHub personal access token for private repositories"
-                    }
+                        "description": "GitHub personal access token for private repositories",
+                    },
                 },
-                "required": ["source"]
-            }
-        )
+                "required": ["source"],
+            },
+        ),
     ]
 
+
 @app.call_tool()
-async def call_tool(name: str, arguments: Dict[str, Any]) -> Sequence[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
     """Execute a tool."""
     try:
         if name == "ingest_repository":
             return await _handle_ingest_repository(arguments)
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
         logger.error(f"Error in tool call {name}: {e}", exc_info=True)
-        return [TextContent(type="text", text=f"Error executing {name}: {str(e)}")]
+        return [TextContent(type="text", text=f"Error executing {name}: {e!s}")]
 
-async def _handle_ingest_repository(arguments: Dict[str, Any]) -> Sequence[TextContent]:
+
+async def _handle_ingest_repository(arguments: dict[str, Any]) -> Sequence[TextContent]:
     """Handle repository ingestion."""
     try:
         source = arguments["source"]
@@ -120,9 +120,8 @@ async def _handle_ingest_repository(arguments: Dict[str, Any]) -> Sequence[TextC
             include_gitignored=include_gitignored,
             include_submodules=include_submodules,
             token=token,
-            output=None  # Don't write to file, return content instead
+            output=None,  # Don't write to file, return content instead
         )
-
 
         # Create a structured response
         response_content = f"""# Repository Analysis: {source}
@@ -146,12 +145,14 @@ async def _handle_ingest_repository(arguments: Dict[str, Any]) -> Sequence[TextC
 
     except Exception as e:
         logger.error(f"Error during ingestion: {e}", exc_info=True)
-        return [TextContent(type="text", text=f"Error ingesting repository: {str(e)}")]
+        return [TextContent(type="text", text=f"Error ingesting repository: {e!s}")]
+
 
 async def start_mcp_server():
     """Start the MCP server with stdio transport."""
     logger.info("Starting Gitingest MCP server with stdio transport")
     await _run_stdio()
+
 
 async def _run_stdio():
     """Run the MCP server with stdio transport."""
@@ -159,5 +160,5 @@ async def _run_stdio():
         await app.run(
             read_stream,
             write_stream,
-            app.create_initialization_options()
+            app.create_initialization_options(),
         )

@@ -14,7 +14,6 @@ from gitingest.utils.git_utils import (
     checkout_partial_clone,
     create_git_repo,
     ensure_git_installed,
-    git_auth_context,
     is_github_host,
     resolve_commit,
 )

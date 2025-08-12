@@ -6,14 +6,13 @@ import asyncio
 import base64
 import re
 import sys
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Generator, Iterable
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse, urlunparse
 
 import git
-import httpx
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError

@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
-import os
-from typing import Any
-
 from mcp.server.fastmcp import FastMCP
 
 from gitingest.entrypoint import ingest_async
@@ -17,6 +12,7 @@ logger = get_logger(__name__)
 
 # Create the FastMCP server instance
 mcp = FastMCP("gitingest")
+
 
 @mcp.tool()
 async def ingest_repository(
@@ -30,16 +26,17 @@ async def ingest_repository(
     token: str | None = None,
 ) -> str:
     """Ingest a Git repository or local directory and return a structured digest for LLMs.
-    
+
     Args:
         source: Git repository URL or local directory path
         max_file_size: Maximum file size to process in bytes (default: 10MB)
         include_patterns: Shell-style patterns to include files
-        exclude_patterns: Shell-style patterns to exclude files  
+        exclude_patterns: Shell-style patterns to exclude files
         branch: Git branch to clone and ingest
         include_gitignored: Include files matched by .gitignore
         include_submodules: Include repository's submodules
         token: GitHub personal access token for private repositories
+
     """
     try:
         logger.info("Starting MCP ingestion", extra={"source": source})
@@ -58,7 +55,7 @@ async def ingest_repository(
             include_gitignored=include_gitignored,
             include_submodules=include_submodules,
             token=token,
-            output=None  # Don't write to file, return content instead
+            output=None,  # Don't write to file, return content instead
         )
 
         # Create a structured response
@@ -83,24 +80,20 @@ async def ingest_repository(
 
     except Exception as e:
         logger.error(f"Error during ingestion: {e}", exc_info=True)
-        return f"Error ingesting repository: {str(e)}"
-
+        return f"Error ingesting repository: {e!s}"
 
 
 async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
     """Start the MCP server with HTTP transport using SSE."""
     logger.info(f"Starting Gitingest MCP server with HTTP/SSE transport on {host}:{port}")
-    
+
     import uvicorn
-    from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import StreamingResponse, JSONResponse
+    from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    import json
-    import asyncio
-    from typing import AsyncGenerator
-    
+    from fastapi.responses import JSONResponse
+
     tcp_app = FastAPI(title="Gitingest MCP Server", description="MCP server over HTTP/SSE")
-    
+
     # Add CORS middleware for remote access
     tcp_app.add_middleware(
         CORSMiddleware,
@@ -109,124 +102,140 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     @tcp_app.get("/health")
     async def health_check():
         """Health check endpoint."""
         return {"status": "healthy", "transport": "http", "version": "1.0"}
-    
+
     @tcp_app.post("/message")
     async def handle_message(message: dict):
         """Handle MCP messages via HTTP POST."""
         try:
             logger.info(f"Received MCP message: {message}")
-            
+
             # Handle different MCP message types
             if message.get("method") == "initialize":
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": message.get("id"),
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {}
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {
+                                "tools": {},
+                            },
+                            "serverInfo": {
+                                "name": "gitingest",
+                                "version": "1.0.0",
+                            },
                         },
-                        "serverInfo": {
-                            "name": "gitingest",
-                            "version": "1.0.0"
-                        }
                     }
-                })
-            
-            elif message.get("method") == "tools/list":
-                return JSONResponse({
-                    "jsonrpc": "2.0", 
-                    "id": message.get("id"),
-                    "result": {
-                        "tools": [{
-                            "name": "ingest_repository",
-                            "description": "Ingest a Git repository or local directory and return a structured digest for LLMs",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "source": {
-                                        "type": "string",
-                                        "description": "Git repository URL or local directory path"
+                )
+
+            if message.get("method") == "tools/list":
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "ingest_repository",
+                                    "description": "Ingest a Git repository or local directory and return a structured digest for LLMs",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "source": {
+                                                "type": "string",
+                                                "description": "Git repository URL or local directory path",
+                                            },
+                                            "max_file_size": {
+                                                "type": "integer",
+                                                "description": "Maximum file size to process in bytes",
+                                                "default": 10485760,
+                                            },
+                                        },
+                                        "required": ["source"],
                                     },
-                                    "max_file_size": {
-                                        "type": "integer", 
-                                        "description": "Maximum file size to process in bytes",
-                                        "default": 10485760
-                                    }
-                                },
-                                "required": ["source"]
-                            }
-                        }]
+                                }
+                            ],
+                        },
                     }
-                })
-            
-            elif message.get("method") == "tools/call":
+                )
+
+            if message.get("method") == "tools/call":
                 tool_name = message.get("params", {}).get("name")
                 arguments = message.get("params", {}).get("arguments", {})
-                
+
                 if tool_name == "ingest_repository":
                     try:
                         result = await ingest_repository(**arguments)
-                        return JSONResponse({
-                            "jsonrpc": "2.0",
-                            "id": message.get("id"), 
-                            "result": {
-                                "content": [{"type": "text", "text": result}]
+                        return JSONResponse(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message.get("id"),
+                                "result": {
+                                    "content": [{"type": "text", "text": result}],
+                                },
                             }
-                        })
+                        )
                     except Exception as e:
-                        return JSONResponse({
+                        return JSONResponse(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message.get("id"),
+                                "error": {
+                                    "code": -32603,
+                                    "message": f"Tool execution failed: {e!s}",
+                                },
+                            }
+                        )
+
+                else:
+                    return JSONResponse(
+                        {
                             "jsonrpc": "2.0",
                             "id": message.get("id"),
                             "error": {
-                                "code": -32603,
-                                "message": f"Tool execution failed: {str(e)}"
-                            }
-                        })
-                
-                else:
-                    return JSONResponse({
+                                "code": -32601,
+                                "message": f"Unknown tool: {tool_name}",
+                            },
+                        }
+                    )
+
+            else:
+                return JSONResponse(
+                    {
                         "jsonrpc": "2.0",
                         "id": message.get("id"),
                         "error": {
                             "code": -32601,
-                            "message": f"Unknown tool: {tool_name}"
-                        }
-                    })
-            
-            else:
-                return JSONResponse({
-                    "jsonrpc": "2.0", 
-                    "id": message.get("id"),
-                    "error": {
-                        "code": -32601,
-                        "message": f"Unknown method: {message.get('method')}"
+                            "message": f"Unknown method: {message.get('method')}",
+                        },
                     }
-                })
-                
+                )
+
         except Exception as e:
             logger.error(f"Error handling MCP message: {e}", exc_info=True)
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": message.get("id") if "message" in locals() else None,
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id") if "message" in locals() else None,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {e!s}",
+                    },
                 }
-            })
-    
+            )
+
     # Start the HTTP server
     config = uvicorn.Config(
         tcp_app,
         host=host,
         port=port,
         log_config=None,  # Use our logging config
-        access_log=False
+        access_log=False,
     )
     server = uvicorn.Server(config)
     await server.serve()

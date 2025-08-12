@@ -49,12 +49,12 @@ async def test_clone_with_commit(repo_exists_true: AsyncMock, gitpython_mocks: d
     await clone_repo(clone_config)
 
     repo_exists_true.assert_any_call(clone_config.url, token=None)
-    
+
     # Verify GitPython calls were made
     mock_git_cmd = gitpython_mocks["git_cmd"]
     mock_repo = gitpython_mocks["repo"]
     mock_clone_from = gitpython_mocks["clone_from"]
-    
+
     # Should have called version (for ensure_git_installed)
     mock_git_cmd.version.assert_called()
 
@@ -207,13 +207,13 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
 
 def assert_standard_calls(mock: AsyncMock, cfg: CloneConfig, commit: str, *, partial_clone: bool = False) -> None:
     """Assert that the standard clone sequence was called.
-    
+
     Note: With GitPython, some operations are mocked differently as they don't use direct command line calls.
     """
     # Git version check should still happen
     # Note: GitPython may call git differently, so we check for any git version-related calls
     # The exact implementation may vary, so we focus on the core functionality
-    
+
     # For partial clones, we might see different call patterns
     # The important thing is that the clone operation succeeded
 
