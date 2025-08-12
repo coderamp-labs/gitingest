@@ -143,10 +143,9 @@ class TestMCPCallTool:
 
             await call_tool("ingest_repository", {"source": "test"})
 
-            mock_logger.error.assert_called_once()
-            args, kwargs = mock_logger.error.call_args
-            assert "Error in tool call ingest_repository: Test exception" in args[0]
-            assert kwargs.get("exc_info") is True
+            mock_logger.exception.assert_called_once()
+            args, kwargs = mock_logger.exception.call_args
+            assert "Error in tool call ingest_repository" in args[0]
 
 
 class TestHandleIngestRepository:
@@ -267,10 +266,9 @@ class TestHandleIngestRepository:
             assert "Error ingesting repository: Ingestion failed" in result[0].text
 
             # Verify error was logged
-            mock_logger.error.assert_called_once()
-            args, kwargs = mock_logger.error.call_args
-            assert "Error during ingestion: Ingestion failed" in args[0]
-            assert kwargs.get("exc_info") is True
+            mock_logger.exception.assert_called_once()
+            args, kwargs = mock_logger.exception.call_args
+            assert "Error during ingestion" in args[0]
 
     @pytest.mark.asyncio
     async def test_handle_ingest_repository_logs_info(self):
