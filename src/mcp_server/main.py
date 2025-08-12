@@ -130,7 +130,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                                 "version": "1.0.0",
                             },
                         },
-                    }
+                    },
                 )
 
             if message.get("method") == "tools/list":
@@ -158,10 +158,10 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                                         },
                                         "required": ["source"],
                                     },
-                                }
+                                },
                             ],
                         },
-                    }
+                    },
                 )
 
             if message.get("method") == "tools/call":
@@ -178,7 +178,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                                 "result": {
                                     "content": [{"type": "text", "text": result}],
                                 },
-                            }
+                            },
                         )
                     except Exception as e:
                         return JSONResponse(
@@ -189,7 +189,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                                     "code": -32603,
                                     "message": f"Tool execution failed: {e!s}",
                                 },
-                            }
+                            },
                         )
 
                 else:
@@ -201,7 +201,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                                 "code": -32601,
                                 "message": f"Unknown tool: {tool_name}",
                             },
-                        }
+                        },
                     )
 
             else:
@@ -213,7 +213,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                             "code": -32601,
                             "message": f"Unknown method: {message.get('method')}",
                         },
-                    }
+                    },
                 )
 
         except Exception as e:
@@ -226,7 +226,7 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                         "code": -32603,
                         "message": f"Internal error: {e!s}",
                     },
-                }
+                },
             )
 
     # Start the HTTP server

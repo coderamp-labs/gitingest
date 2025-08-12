@@ -13,7 +13,7 @@ index 1b776e8..b486fa1 100644
 @@ -87,7 +86,12 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
      commit = await resolve_commit(config, token=token)
      logger.debug("Resolved commit", extra={"commit": commit})
- 
+
 -    # Clone the repository using GitPython with proper authentication
 +    # Prepare URL with authentication if needed
 +    clone_url = url
@@ -27,7 +27,7 @@ index 1b776e8..b486fa1 100644
 @@ -96,20 +100,18 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
              "depth": 1,
          }
- 
+
 -        with git_auth_context(url, token) as (git_cmd, auth_url):
 +        if partial_clone:
 +            # GitPython doesn't directly support --filter and --sparse in clone
@@ -68,17 +68,17 @@ index 1c1a986..b7f293a 100644
 -from typing import TYPE_CHECKING, Final, Generator, Iterable
 +from typing import TYPE_CHECKING, Final, Iterable
  from urllib.parse import urlparse, urlunparse
- 
+
  import git
 +import httpx
 +from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
- 
+
  from gitingest.utils.compat_func import removesuffix
  from gitingest.utils.exceptions import InvalidGitHubTokenError
 @@ -135,15 +136,35 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
      bool
          ``True`` if the repository exists, ``False`` otherwise.
- 
+
 +    Raises
 +    ------
 +    RuntimeError
@@ -99,7 +99,7 @@ index 1c1a986..b7f293a 100644
 +        base_api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
 +        url = f"{base_api}/repos/{owner}/{repo}"
 +        headers["Authorization"] = f"Bearer {token}"
- 
+
 -    return True
 +    async with httpx.AsyncClient(follow_redirects=True) as client:
 +        try:
@@ -115,11 +115,11 @@ index 1c1a986..b7f293a 100644
 +        return False
 +    msg = f"Unexpected HTTP status {status_code} for {url}"
 +    raise RuntimeError(msg)
- 
- 
+
+
  def _parse_github_url(url: str) -> tuple[str, str, str]:
 @@ -217,6 +238,13 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
- 
+
      # Use GitPython to get remote references
      try:
 +        git_cmd = git.Git()
@@ -131,11 +131,11 @@ index 1c1a986..b7f293a 100644
 +
          fetch_tags = ref_type == "tags"
          to_fetch = "tags" if fetch_tags else "heads"
- 
+
 @@ -226,11 +254,8 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
              cmd_args.append("--refs")  # Filter out peeled tag objects
          cmd_args.append(url)
- 
+
 -        # Run the command with proper authentication
 -        with git_auth_context(url, token) as (git_cmd, auth_url):
 -            # Replace the URL in cmd_args with the authenticated URL
@@ -143,13 +143,13 @@ index 1c1a986..b7f293a 100644
 -            output = git_cmd.ls_remote(*cmd_args)
 +        # Run the command using git_cmd.ls_remote() method
 +        output = git_cmd.ls_remote(*cmd_args)
- 
+
          # Parse output
          return [
 @@ -314,70 +339,6 @@ def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
      return f"http.https://{hostname}/.extraheader=Authorization: Basic {basic}"
- 
- 
+
+
 -def create_authenticated_url(url: str, token: str | None = None) -> str:
 -    """Create an authenticated URL for Git operations.
 -
@@ -216,9 +216,9 @@ index 1c1a986..b7f293a 100644
 -
  def validate_github_token(token: str) -> None:
      """Validate the format of a GitHub Personal Access Token.
- 
+
 @@ -479,9 +440,15 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None)
- 
+
      """
      try:
 -        # Execute ls-remote command with proper authentication
@@ -234,20 +234,20 @@ index 1c1a986..b7f293a 100644
 +        # Execute ls-remote command
 +        output = git_cmd.ls_remote(auth_url, pattern)
          lines = output.splitlines()
- 
+
          sha = _pick_commit_sha(lines)
 @@ -490,7 +457,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None)
              raise ValueError(msg)
- 
+
      except git.GitCommandError as exc:
 -        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
 +        msg = f"Failed to resolve {pattern} in {url}: {exc}"
          raise ValueError(msg) from exc
- 
+
      return sha
 @@ -547,8 +514,6 @@ def _add_token_to_url(url: str, token: str) -> str:
          The URL with embedded authentication.
- 
+
      """
 -    from urllib.parse import urlparse, urlunparse
 -
@@ -264,7 +264,7 @@ index f2f2ae9..03f52f1 100644
          _cleanup_repository(clone_config)
 -        return IngestErrorResponse(error=f"{exc!s}")
 +        return IngestErrorResponse(error=str(exc))
- 
+
      if len(content) > MAX_DISPLAY_SIZE:
          content = (
 diff --git a/tests/test_clone.py b/tests/test_clone.py
@@ -272,27 +272,27 @@ index 6abbd87..8c44523 100644
 --- a/tests/test_clone.py
 +++ b/tests/test_clone.py
 @@ -8,8 +8,11 @@ from __future__ import annotations
- 
+
  import sys
  from typing import TYPE_CHECKING
 +from unittest.mock import AsyncMock
- 
+
 +import httpx
  import pytest
 +from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
- 
+
  from gitingest.clone import clone_repo
  from gitingest.schemas import CloneConfig
 @@ -18,7 +21,6 @@ from tests.conftest import DEMO_URL, LOCAL_REPO_PATH
- 
+
  if TYPE_CHECKING:
      from pathlib import Path
 -    from unittest.mock import AsyncMock
- 
+
      from pytest_mock import MockerFixture
- 
+
 @@ -91,30 +93,24 @@ async def test_clone_nonexistent_repository(repo_exists_true: AsyncMock) -> None
- 
+
  @pytest.mark.asyncio
  @pytest.mark.parametrize(
 -    ("git_command_succeeds", "expected"),
@@ -325,23 +325,23 @@ index 6abbd87..8c44523 100644
 +    mock_client.__aenter__.return_value = mock_client  # context-manager protocol
 +    mock_client.head.return_value = httpx.Response(status_code=status_code)
 +    mocker.patch("httpx.AsyncClient", return_value=mock_client)
- 
+
      result = await check_repo_exists(DEMO_URL)
- 
+
      assert result is expected
 -    mock_resolve.assert_called_once_with(DEMO_URL, "HEAD", token=None)
- 
- 
+
+
  @pytest.mark.asyncio
 @@ -206,18 +202,19 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
- 
- 
+
+
  @pytest.mark.asyncio
 -async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
 -    """Test ``check_repo_exists`` with authentication token.
 +async def test_check_repo_exists_with_redirect(mocker: MockerFixture) -> None:
 +    """Test ``check_repo_exists`` when a redirect (302) is returned.
- 
+
 -    Given a GitHub URL and a token:
 +    Given a URL that responds with "302 Found":
      When ``check_repo_exists`` is called,
@@ -355,11 +355,11 @@ index 6abbd87..8c44523 100644
 +    mock_process.communicate.return_value = (b"302\n", b"")
 +    mock_process.returncode = 0  # Simulate successful request
 +    mock_exec.return_value = mock_process
- 
+
 -    test_token = "token123"  # noqa: S105
 -    result = await check_repo_exists("https://github.com/test/repo", token=test_token)
 +    repo_exists = await check_repo_exists(DEMO_URL)
- 
+
 -    assert result is True
 -    mock_resolve.assert_called_once_with("https://github.com/test/repo", "HEAD", token=test_token)
 +    assert repo_exists is False
