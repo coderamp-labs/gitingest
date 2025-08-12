@@ -2,9 +2,9 @@
 
 import shutil
 import sys
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Generator
 
 import pytest
 from fastapi import status

@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -20,7 +21,7 @@ from gitingest.query_parser import IngestionQuery
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-WriteNotebookFunc = Callable[[str, Dict[str, Any]], Path]
+WriteNotebookFunc = Callable[[str, dict[str, Any]], Path]
 
 DEMO_URL = "https://github.com/user/repo"
 LOCAL_REPO_PATH = "/tmp/repo"
@@ -216,10 +217,10 @@ def run_command_mock(mocker: MockerFixture) -> AsyncMock:
     """
     mock = AsyncMock(side_effect=_fake_run_command)
     mocker.patch("gitingest.utils.git_utils.run_command", mock)
-    
+
     # Mock GitPython components
     _setup_gitpython_mocks(mocker)
-    
+
     return mock
 
 
@@ -238,7 +239,7 @@ def _setup_gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
     mock_git_cmd.execute.return_value = f"{DEMO_COMMIT}\trefs/heads/main\n"
     mock_git_cmd.ls_remote.return_value = f"{DEMO_COMMIT}\trefs/heads/main\n"
     mock_git_cmd.clone.return_value = ""
-    
+
     # Mock git.Repo class
     mock_repo = MagicMock()
     mock_repo.git = MagicMock()
@@ -248,21 +249,21 @@ def _setup_gitpython_mocks(mocker: MockerFixture) -> dict[str, MagicMock]:
     mock_repo.git.execute = MagicMock()
     mock_repo.git.config = MagicMock()
     mock_repo.git.sparse_checkout = MagicMock()
-    
+
     # Mock git.Repo.clone_from
     mock_clone_from = MagicMock(return_value=mock_repo)
-    
+
     git_git_mock = mocker.patch("git.Git", return_value=mock_git_cmd)
     git_repo_mock = mocker.patch("git.Repo", return_value=mock_repo)
     mocker.patch("git.Repo.clone_from", mock_clone_from)
-    
+
     # Patch imports in our modules
     mocker.patch("gitingest.utils.git_utils.git.Git", return_value=mock_git_cmd)
     mocker.patch("gitingest.utils.git_utils.git.Repo", return_value=mock_repo)
     mocker.patch("gitingest.clone.git.Git", return_value=mock_git_cmd)
     mocker.patch("gitingest.clone.git.Repo", return_value=mock_repo)
     mocker.patch("gitingest.clone.git.Repo.clone_from", mock_clone_from)
-    
+
     return {
         "git_cmd": mock_git_cmd,
         "repo": mock_repo,

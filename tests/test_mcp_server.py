@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Sequence
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 # Import the module functions and server instance
 from gitingest.mcp_server import (
+    _handle_ingest_repository,
+    _run_stdio,
     app,
     call_tool,
     list_tools,
     start_mcp_server,
-    _handle_ingest_repository,
-    _run_stdio,
 )
 
 
@@ -27,10 +26,10 @@ class TestMCPListTools:
     async def test_list_tools_returns_correct_tools(self):
         """Test that list_tools returns the expected tools."""
         tools = await list_tools()
-        
+
         assert isinstance(tools, list)
         assert len(tools) == 1
-        
+
         tool = tools[0]
         assert isinstance(tool, Tool)
         assert tool.name == "ingest_repository"
@@ -41,25 +40,30 @@ class TestMCPListTools:
         """Test that the ingest_repository tool has correct schema."""
         tools = await list_tools()
         ingest_tool = tools[0]
-        
+
         # Check required schema structure
         schema = ingest_tool.inputSchema
         assert schema["type"] == "object"
         assert "properties" in schema
         assert "required" in schema
-        
+
         # Check required fields
         assert "source" in schema["required"]
-        
+
         # Check properties
         properties = schema["properties"]
         assert "source" in properties
         assert properties["source"]["type"] == "string"
-        
+
         # Check optional parameters
         optional_params = [
-            "max_file_size", "include_patterns", "exclude_patterns",
-            "branch", "include_gitignored", "include_submodules", "token"
+            "max_file_size",
+            "include_patterns",
+            "exclude_patterns",
+            "branch",
+            "include_gitignored",
+            "include_submodules",
+            "token",
         ]
         for param in optional_params:
             assert param in properties
@@ -69,7 +73,7 @@ class TestMCPListTools:
         """Test that the source parameter has proper examples."""
         tools = await list_tools()
         source_prop = tools[0].inputSchema["properties"]["source"]
-        
+
         assert "examples" in source_prop
         examples = source_prop["examples"]
         assert len(examples) >= 3
@@ -88,16 +92,16 @@ class TestMCPCallTool:
             mock_ingest.return_value = (
                 "Repository summary",
                 "File tree structure",
-                "Repository content"
+                "Repository content",
             )
-            
+
             result = await call_tool("ingest_repository", {"source": "https://github.com/test/repo"})
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
             assert isinstance(result[0], TextContent)
             assert result[0].type == "text"
-            
+
             content = result[0].text
             assert "Repository Analysis" in content
             assert "Repository summary" in content
@@ -109,7 +113,7 @@ class TestMCPCallTool:
     async def test_call_tool_unknown_tool(self):
         """Test handling of unknown tool calls."""
         result = await call_tool("unknown_tool", {})
-        
+
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
@@ -120,9 +124,9 @@ class TestMCPCallTool:
         """Test exception handling in call_tool."""
         with patch("gitingest.mcp_server._handle_ingest_repository") as mock_handle:
             mock_handle.side_effect = Exception("Test exception")
-            
+
             result = await call_tool("ingest_repository", {"source": "test"})
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
             assert "Error executing ingest_repository: Test exception" in result[0].text
@@ -130,14 +134,15 @@ class TestMCPCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_logs_errors(self):
         """Test that call_tool logs errors properly."""
-        with patch("gitingest.mcp_server._handle_ingest_repository") as mock_handle, \
-             patch("gitingest.mcp_server.logger") as mock_logger:
-            
+        with (
+            patch("gitingest.mcp_server._handle_ingest_repository") as mock_handle,
+            patch("gitingest.mcp_server.logger") as mock_logger,
+        ):
             test_exception = Exception("Test exception")
             mock_handle.side_effect = test_exception
-            
+
             await call_tool("ingest_repository", {"source": "test"})
-            
+
             mock_logger.error.assert_called_once()
             args, kwargs = mock_logger.error.call_args
             assert "Error in tool call ingest_repository: Test exception" in args[0]
@@ -152,13 +157,13 @@ class TestHandleIngestRepository:
         """Test repository ingestion with minimal arguments."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             result = await _handle_ingest_repository({"source": "https://github.com/test/repo"})
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
             assert isinstance(result[0], TextContent)
-            
+
             # Verify ingest_async was called with correct defaults
             mock_ingest.assert_called_once_with(
                 source="https://github.com/test/repo",
@@ -169,7 +174,7 @@ class TestHandleIngestRepository:
                 include_gitignored=False,
                 include_submodules=False,
                 token=None,
-                output=None
+                output=None,
             )
 
     @pytest.mark.asyncio
@@ -177,7 +182,7 @@ class TestHandleIngestRepository:
         """Test repository ingestion with all arguments."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             args = {
                 "source": "https://github.com/test/repo",
                 "max_file_size": 1048576,
@@ -186,14 +191,14 @@ class TestHandleIngestRepository:
                 "branch": "develop",
                 "include_gitignored": True,
                 "include_submodules": True,
-                "token": "ghp_test_token"
+                "token": "ghp_test_token",
             }
-            
+
             result = await _handle_ingest_repository(args)
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
-            
+
             # Verify ingest_async was called with all parameters
             mock_ingest.assert_called_once_with(
                 source="https://github.com/test/repo",
@@ -204,7 +209,7 @@ class TestHandleIngestRepository:
                 include_gitignored=True,
                 include_submodules=True,
                 token="ghp_test_token",
-                output=None
+                output=None,
             )
 
     @pytest.mark.asyncio
@@ -212,15 +217,15 @@ class TestHandleIngestRepository:
         """Test that patterns are correctly converted to sets."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             args = {
                 "source": "test",
                 "include_patterns": ["*.py"],
-                "exclude_patterns": ["*.txt"]
+                "exclude_patterns": ["*.txt"],
             }
-            
+
             await _handle_ingest_repository(args)
-            
+
             call_args = mock_ingest.call_args[1]
             assert isinstance(call_args["include_patterns"], set)
             assert isinstance(call_args["exclude_patterns"], set)
@@ -232,15 +237,15 @@ class TestHandleIngestRepository:
         """Test handling of None patterns."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             args = {
                 "source": "test",
                 "include_patterns": None,
-                "exclude_patterns": None
+                "exclude_patterns": None,
             }
-            
+
             await _handle_ingest_repository(args)
-            
+
             call_args = mock_ingest.call_args[1]
             assert call_args["include_patterns"] is None
             assert call_args["exclude_patterns"] is None
@@ -248,18 +253,19 @@ class TestHandleIngestRepository:
     @pytest.mark.asyncio
     async def test_handle_ingest_repository_exception(self):
         """Test exception handling in _handle_ingest_repository."""
-        with patch("gitingest.mcp_server.ingest_async") as mock_ingest, \
-             patch("gitingest.mcp_server.logger") as mock_logger:
-            
+        with (
+            patch("gitingest.mcp_server.ingest_async") as mock_ingest,
+            patch("gitingest.mcp_server.logger") as mock_logger,
+        ):
             test_exception = Exception("Ingestion failed")
             mock_ingest.side_effect = test_exception
-            
+
             result = await _handle_ingest_repository({"source": "test"})
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
             assert "Error ingesting repository: Ingestion failed" in result[0].text
-            
+
             # Verify error was logged
             mock_logger.error.assert_called_once()
             args, kwargs = mock_logger.error.call_args
@@ -269,16 +275,19 @@ class TestHandleIngestRepository:
     @pytest.mark.asyncio
     async def test_handle_ingest_repository_logs_info(self):
         """Test that _handle_ingest_repository logs info messages."""
-        with patch("gitingest.mcp_server.ingest_async") as mock_ingest, \
-             patch("gitingest.mcp_server.logger") as mock_logger:
-            
+        with (
+            patch("gitingest.mcp_server.ingest_async") as mock_ingest,
+            patch("gitingest.mcp_server.logger") as mock_logger,
+        ):
             mock_ingest.return_value = ("test summary", "tree", "content")
-            
+
             await _handle_ingest_repository({"source": "https://github.com/test/repo"})
-            
+
             # Check that info message was logged for start
             assert mock_logger.info.call_count == 1
-            mock_logger.info.assert_called_with("Starting MCP ingestion", extra={"source": "https://github.com/test/repo"})
+            mock_logger.info.assert_called_with(
+                "Starting MCP ingestion", extra={"source": "https://github.com/test/repo"}
+            )
 
     @pytest.mark.asyncio
     async def test_handle_ingest_repository_response_format(self):
@@ -287,13 +296,13 @@ class TestHandleIngestRepository:
             mock_ingest.return_value = (
                 "Test repository with 5 files",
                 "src/\n  main.py\n  utils.py",
-                "File contents here..."
+                "File contents here...",
             )
-            
+
             result = await _handle_ingest_repository({"source": "https://github.com/test/repo"})
-            
+
             content = result[0].text
-            
+
             # Check response structure
             assert content.startswith("# Repository Analysis: https://github.com/test/repo")
             assert "## Summary" in content
@@ -319,23 +328,24 @@ class TestMCPServerIntegration:
         """Test that start_mcp_server calls the stdio runner."""
         with patch("gitingest.mcp_server._run_stdio") as mock_run_stdio:
             mock_run_stdio.return_value = AsyncMock()
-            
+
             await start_mcp_server()
-            
+
             mock_run_stdio.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_mcp_server_logs_startup(self):
         """Test that start_mcp_server logs startup message."""
-        with patch("gitingest.mcp_server._run_stdio") as mock_run_stdio, \
-             patch("gitingest.mcp_server.logger") as mock_logger:
-            
+        with (
+            patch("gitingest.mcp_server._run_stdio") as mock_run_stdio,
+            patch("gitingest.mcp_server.logger") as mock_logger,
+        ):
             mock_run_stdio.return_value = AsyncMock()
-            
+
             await start_mcp_server()
-            
+
             mock_logger.info.assert_called_once_with(
-                "Starting Gitingest MCP server with stdio transport"
+                "Starting Gitingest MCP server with stdio transport",
             )
 
     @pytest.mark.asyncio
@@ -348,19 +358,20 @@ class TestMCPServerIntegration:
             mock_context.__aenter__.return_value = mock_streams
             mock_context.__aexit__.return_value = None
             mock_stdio_server.return_value = mock_context
-            
+
             # Mock app.run to avoid actually running the server
-            with patch.object(app, "run") as mock_run, \
-                 patch.object(app, "create_initialization_options") as mock_init_options:
-                
+            with (
+                patch.object(app, "run") as mock_run,
+                patch.object(app, "create_initialization_options") as mock_init_options,
+            ):
                 mock_init_options.return_value = {}
                 mock_run.return_value = AsyncMock()
-                
+
                 await _run_stdio()
-                
+
                 # Verify stdio_server was called
                 mock_stdio_server.assert_called_once()
-                
+
                 # Verify app.run was called with streams and init options
                 mock_run.assert_called_once()
                 call_args = mock_run.call_args[0]
@@ -375,7 +386,7 @@ class TestMCPServerParameterValidation:
         """Test that missing source parameter is handled."""
         # This should raise a KeyError which gets caught by call_tool
         result = await call_tool("ingest_repository", {})
-        
+
         assert isinstance(result, list)
         assert len(result) == 1
         assert "Error ingesting repository" in result[0].text
@@ -386,12 +397,15 @@ class TestMCPServerParameterValidation:
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             # ingest_async should handle type validation, but let's test edge cases
             mock_ingest.side_effect = TypeError("Invalid parameter type")
-            
-            result = await call_tool("ingest_repository", {
-                "source": "test",
-                "max_file_size": "not_an_integer"  # Invalid type
-            })
-            
+
+            result = await call_tool(
+                "ingest_repository",
+                {
+                    "source": "test",
+                    "max_file_size": "not_an_integer",  # Invalid type
+                },
+            )
+
             assert isinstance(result, list)
             assert len(result) == 1
             assert "Error ingesting repository: Invalid parameter type" in result[0].text
@@ -401,15 +415,15 @@ class TestMCPServerParameterValidation:
         """Test handling of empty pattern lists."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             args = {
                 "source": "test",
                 "include_patterns": [],
-                "exclude_patterns": []
+                "exclude_patterns": [],
             }
-            
+
             await _handle_ingest_repository(args)
-            
+
             call_args = mock_ingest.call_args[1]
             # Empty lists are treated as falsy and become None
             assert call_args["include_patterns"] is None
@@ -423,7 +437,7 @@ class TestMCPServerEdgeCases:
     async def test_call_tool_empty_arguments(self):
         """Test call_tool with empty arguments dict."""
         result = await call_tool("ingest_repository", {})
-        
+
         assert isinstance(result, list)
         assert len(result) == 1
         assert "Error ingesting repository" in result[0].text
@@ -434,9 +448,9 @@ class TestMCPServerEdgeCases:
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             # Test with empty strings
             mock_ingest.return_value = ("", "", "")
-            
+
             result = await _handle_ingest_repository({"source": "test"})
-            
+
             assert isinstance(result, list)
             assert len(result) == 1
             content = result[0].text
@@ -450,15 +464,12 @@ class TestMCPServerEdgeCases:
         """Test that concurrent tool calls work correctly."""
         with patch("gitingest.mcp_server.ingest_async") as mock_ingest:
             mock_ingest.return_value = ("summary", "tree", "content")
-            
+
             # Create multiple concurrent calls
-            tasks = [
-                call_tool("ingest_repository", {"source": f"test-{i}"})
-                for i in range(3)
-            ]
-            
+            tasks = [call_tool("ingest_repository", {"source": f"test-{i}"}) for i in range(3)]
+
             results = await asyncio.gather(*tasks)
-            
+
             assert len(results) == 3
             for result in results:
                 assert isinstance(result, list)

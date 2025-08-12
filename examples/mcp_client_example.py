@@ -1,11 +1,12 @@
 import asyncio
+
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 async def main():
     async with stdio_client(
-        StdioServerParameters(command="gitingest", args=["--mcp-server"])
+        StdioServerParameters(command="gitingest", args=["--mcp-server"]),
     ) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -18,7 +19,9 @@ async def main():
 
             # Call the ingest_repository tool
             print("\n📞 Appel de l'outil ingest_repository...")
-            result = await session.call_tool("ingest_repository", {"source": "https://github.com/coderamp-labs/gitingest"})
+            result = await session.call_tool(
+                "ingest_repository", {"source": "https://github.com/coderamp-labs/gitingest"}
+            )
             print(result)
 
 

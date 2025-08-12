@@ -41,4 +41,4 @@ def removesuffix(s: str, suffix: str) -> str:
         String with suffix removed.
 
     """
-    return s[: -len(suffix)] if s.endswith(suffix) else s
+    return s.removesuffix(suffix)

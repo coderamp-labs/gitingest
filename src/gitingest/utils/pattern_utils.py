@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from gitingest.utils.ignore_patterns import DEFAULT_IGNORE_PATTERNS
 
