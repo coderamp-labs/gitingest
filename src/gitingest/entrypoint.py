@@ -7,7 +7,6 @@ import errno
 import shutil
 import stat
 import sys
-from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +24,7 @@ from gitingest.utils.pattern_utils import process_patterns
 from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Callable
     from types import TracebackType
 
     from gitingest.schemas import IngestionQuery

@@ -6,7 +6,6 @@ import asyncio
 import base64
 import re
 import sys
-from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -19,6 +18,8 @@ from gitingest.utils.exceptions import InvalidGitHubTokenError
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Generator, Iterable
+
     from gitingest.schemas import CloneConfig
 
 # Initialize logger for this module
@@ -221,7 +222,6 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
         git_cmd = git.Git()
 
         # Prepare environment with authentication if needed
-        env = None
         if token and is_github_host(url):
             auth_url = _add_token_to_url(url, token)
             url = auth_url
@@ -265,6 +265,11 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
     -------
     git.Repo
         A GitPython Repo object configured with authentication.
+
+    Raises
+    ------
+    ValueError
+        If the provided local_path is not a valid git repository.
 
     """
     try:
@@ -552,8 +557,6 @@ def _add_token_to_url(url: str, token: str) -> str:
         The URL with embedded authentication.
 
     """
-    from urllib.parse import urlparse, urlunparse
-
     parsed = urlparse(url)
     # Add token as username in URL (GitHub supports this)
     netloc = f"x-oauth-basic:{token}@{parsed.hostname}"

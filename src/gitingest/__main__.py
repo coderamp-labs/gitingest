@@ -165,18 +165,27 @@ async def _async_main(
     output : str | None
         The path where the output file will be written (default: ``digest.txt`` in current directory).
         Use ``"-"`` to write to ``stdout``.
+    mcp_server : bool
+        If ``True``, starts the MCP (Model Context Protocol) server instead of normal operation (default: ``False``).
 
     Raises
     ------
     click.Abort
         Raised if an error occurs during execution and the command must be aborted.
+    click.ClickException
+        Raised if MCP server dependencies are not installed when MCP mode is requested.
 
     """
     # Check if MCP server mode is requested
     if mcp_server:
-        from gitingest.mcp_server import start_mcp_server
+        # Dynamic import to avoid circular imports and optional dependency
+        try:
+            from gitingest.mcp_server import start_mcp_server
 
-        await start_mcp_server()
+            await start_mcp_server()
+        except ImportError as e:
+            msg = f"MCP server dependencies not installed: {e}"
+            raise click.ClickException(msg) from e
         return
 
     try:
