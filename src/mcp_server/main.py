@@ -79,8 +79,8 @@ async def ingest_repository(
         return response_content
 
     except Exception as e:
-        logger.error(f"Error during ingestion: {e}", exc_info=True)
-        return f"Error ingesting repository: {e!s}"
+        logger.exception("Error during ingestion: %s", e)
+        return "Error ingesting repository: An internal error occurred"
 
 
 async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
@@ -142,7 +142,10 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                             "tools": [
                                 {
                                     "name": "ingest_repository",
-                                    "description": "Ingest a Git repository or local directory and return a structured digest for LLMs",
+                                    "description": (
+                                        "Ingest a Git repository or local directory "
+                                        "and return a structured digest for LLMs"
+                                    ),
                                     "inputSchema": {
                                         "type": "object",
                                         "properties": {
@@ -181,13 +184,14 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                             },
                         )
                     except Exception as e:
+                        logger.exception("Tool execution failed: %s", e)
                         return JSONResponse(
                             {
                                 "jsonrpc": "2.0",
                                 "id": message.get("id"),
                                 "error": {
                                     "code": -32603,
-                                    "message": f"Tool execution failed: {e!s}",
+                                    "message": "Tool execution failed",
                                 },
                             },
                         )
@@ -217,14 +221,14 @@ async def start_mcp_server_tcp(host: str = "0.0.0.0", port: int = 8001):
                 )
 
         except Exception as e:
-            logger.error(f"Error handling MCP message: {e}", exc_info=True)
+            logger.exception("Error handling MCP message: %s", e)
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
                     "id": message.get("id") if "message" in locals() else None,
                     "error": {
                         "code": -32603,
-                        "message": f"Internal error: {e!s}",
+                        "message": "Internal server error",
                     },
                 },
             )
