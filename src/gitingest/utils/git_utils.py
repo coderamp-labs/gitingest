@@ -282,7 +282,7 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
             key, value = auth_header.split("=", 1)
             repo.git.config(key, value)
 
-        return repo
+        return repo  # noqa: TRY300
     except git.InvalidGitRepositoryError as exc:
         msg = f"Invalid git repository at {local_path}"
         raise ValueError(msg) from exc
@@ -500,7 +500,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             msg = f"{pattern!r} not found in {url}"
             raise ValueError(msg)
 
-        return sha
+        return sha  # noqa: TRY300
     except git.GitCommandError as exc:
         msg = f"Failed to resolve {pattern} in {url}: {exc}"
         raise ValueError(msg) from exc
