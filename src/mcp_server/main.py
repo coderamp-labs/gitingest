@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
+import os
+import threading
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP  # pylint: disable=import-error
+from prometheus_client import Counter
 
 from gitingest.entrypoint import ingest_async
 from gitingest.utils.logging_config import get_logger
+from server.metrics_server import start_metrics_server
 
 # Initialize logger for this module
 logger = get_logger(__name__)
+
+# Create Prometheus metrics
+fastmcp_ingest_counter = Counter("gitingest_fastmcp_ingest_total", "Number of FastMCP ingests", ["status"])
+fastmcp_tool_calls_counter = Counter(
+    "gitingest_fastmcp_tool_calls_total",
+    "Number of FastMCP tool calls",
+    ["tool_name", "status"],
+)
 
 # Create the FastMCP server instance
 mcp = FastMCP("gitingest")
@@ -40,6 +57,7 @@ async def ingest_repository(
 
     """
     try:
+        fastmcp_tool_calls_counter.labels(tool_name="ingest_repository", status="started").inc()
         logger.info("Starting MCP ingestion", extra={"source": source})
 
         # Convert patterns to sets if provided
@@ -58,8 +76,14 @@ async def ingest_repository(
             token=token,
             output=None,  # Don't write to file, return content instead
         )
+
+        fastmcp_ingest_counter.labels(status="success").inc()
+        fastmcp_tool_calls_counter.labels(tool_name="ingest_repository", status="success").inc()
+
     except Exception:
         logger.exception("Error during ingestion")
+        fastmcp_ingest_counter.labels(status="error").inc()
+        fastmcp_tool_calls_counter.labels(tool_name="ingest_repository", status="error").inc()
         return "Error ingesting repository: An internal error occurred"
 
     # Create a structured response and return directly
@@ -85,10 +109,17 @@ async def start_mcp_server_tcp(host: str = "127.0.0.1", port: int = 8001) -> Non
     """Start the MCP server with HTTP transport using SSE."""
     logger.info("Starting Gitingest MCP server with HTTP/SSE transport on %s:%s", host, port)
 
-    import uvicorn  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-    from fastapi import FastAPI  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-    from fastapi.middleware.cors import CORSMiddleware  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-    from fastapi.responses import JSONResponse  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    # Start metrics server in a separate thread if enabled
+    if os.getenv("GITINGEST_METRICS_ENABLED") is not None:
+        metrics_host = os.getenv("GITINGEST_METRICS_HOST", "127.0.0.1")
+        metrics_port = int(os.getenv("GITINGEST_METRICS_PORT", "9090"))
+        metrics_thread = threading.Thread(
+            target=start_metrics_server,
+            args=(metrics_host, metrics_port),
+            daemon=True,
+        )
+        metrics_thread.start()
+        logger.info("Started metrics server on %s:%s", metrics_host, metrics_port)
 
     tcp_app = FastAPI(title="Gitingest MCP Server", description="MCP server over HTTP/SSE")
 

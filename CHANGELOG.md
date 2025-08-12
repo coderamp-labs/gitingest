@@ -5,7 +5,7 @@
 ### Features
 
 * **mcp:** Add Model Context Protocol (MCP) server support
-  - New `--mcp-server` CLI option to start MCP server
+  - New `--mcp` CLI option to start MCP server
   - `ingest_repository` tool for LLM integration
   - Full MCP protocol compliance with stdio transport
   - Enhanced MCP client examples for stdio transport

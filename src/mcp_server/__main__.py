@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 @click.option(
     "--port",
     type=int,
-    default=8001,
+    default=8000,
     show_default=True,
     help="Port for TCP server (only used with --transport tcp)",
 )
