@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -11,6 +10,9 @@ from mcp.types import TextContent, Tool
 
 from gitingest.entrypoint import ingest_async
 from gitingest.utils.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -86,7 +88,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             return await _handle_ingest_repository(arguments)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
-        logger.error(f"Error in tool call {name}: {e}", exc_info=True)
+        logger.exception("Error in tool call %s", name)
         return [TextContent(type="text", text=f"Error executing {name}: {e!s}")]
 
 
@@ -144,17 +146,17 @@ async def _handle_ingest_repository(arguments: dict[str, Any]) -> Sequence[TextC
         return [TextContent(type="text", text=response_content)]
 
     except Exception as e:
-        logger.error(f"Error during ingestion: {e}", exc_info=True)
+        logger.exception("Error during ingestion")
         return [TextContent(type="text", text=f"Error ingesting repository: {e!s}")]
 
 
-async def start_mcp_server():
+async def start_mcp_server() -> None:
     """Start the MCP server with stdio transport."""
     logger.info("Starting Gitingest MCP server with stdio transport")
     await _run_stdio()
 
 
-async def _run_stdio():
+async def _run_stdio() -> None:
     """Run the MCP server with stdio transport."""
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
