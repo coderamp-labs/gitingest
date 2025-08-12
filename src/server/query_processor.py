@@ -280,23 +280,24 @@ async def process_query(
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
     )
 
-    # Check if digest already exists on S3 before cloning
-    s3_response = await _check_s3_cache(
-        query=query,
-        input_text=input_text,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type.value,
-        pattern=pattern,
-        token=token,
-    )
-    if s3_response:
-        return s3_response
-
-    clone_config = query.extract_clone_config()
-    short_repo_url = f"{query.user_name}/{query.repo_name}"
-
-    # Track memory usage during the entire ingestion process
+    # Track memory usage for the entire request (including S3 cache checks)
     with MemoryTracker(input_text) as memory_tracker:
+        # Check if digest already exists on S3 before cloning
+        s3_response = await _check_s3_cache(
+            query=query,
+            input_text=input_text,
+            max_file_size=max_file_size,
+            pattern_type=pattern_type.value,
+            pattern=pattern,
+            token=token,
+        )
+        if s3_response:
+            # Even for S3 cache hits, record the memory usage
+            memory_tracker.update_peak()
+            return s3_response
+
+        clone_config = query.extract_clone_config()
+        short_repo_url = f"{query.user_name}/{query.repo_name}"
         await clone_repo(clone_config, token=token)
 
         # Update peak memory after cloning
@@ -332,35 +333,35 @@ async def process_query(
             _cleanup_repository(clone_config)
             return IngestErrorResponse(error=f"{exc!s}")
 
-    if len(content) > MAX_DISPLAY_SIZE:
-        content = (
-            f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-            "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+        if len(content) > MAX_DISPLAY_SIZE:
+            content = (
+                f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+                "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+            )
+
+        _print_success(
+            url=query.url,
+            max_file_size=max_file_size,
+            pattern_type=pattern_type,
+            pattern=pattern,
+            summary=summary,
         )
 
-    _print_success(
-        url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-        summary=summary,
-    )
+        digest_url = _generate_digest_url(query)
 
-    digest_url = _generate_digest_url(query)
+        # Repository was already cleaned up after ingestion to free memory earlier
 
-    # Repository was already cleaned up after ingestion to free memory earlier
-
-    return IngestSuccessResponse(
-        repo_url=input_text,
-        short_repo_url=short_repo_url,
-        summary=summary,
-        digest_url=digest_url,
-        tree=tree,
-        content=content,
-        default_max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-    )
+        return IngestSuccessResponse(
+            repo_url=input_text,
+            short_repo_url=short_repo_url,
+            summary=summary,
+            digest_url=digest_url,
+            tree=tree,
+            content=content,
+            default_max_file_size=max_file_size,
+            pattern_type=pattern_type,
+            pattern=pattern,
+        )
 
 
 def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
