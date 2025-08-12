@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 
 
 @async_timeout(DEFAULT_TIMEOUT)
-async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
+async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:  # noqa: PLR0915  # pylint: disable=too-many-statements
     """Clone a repository to a local path based on the provided configuration.
 
     This function handles the process of cloning a Git repository to the local file system.

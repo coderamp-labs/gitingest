@@ -205,7 +205,7 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
     mock_repo.git.submodule.assert_called_with("update", "--init", "--recursive", "--depth=1")
 
 
-def assert_standard_calls(mock: AsyncMock, cfg: CloneConfig, commit: str, *, partial_clone: bool = False) -> None:
+def assert_standard_calls(mock: AsyncMock, cfg: CloneConfig, commit: str, *, partial_clone: bool = False) -> None:  # pylint: disable=unused-argument
     """Assert that the standard clone sequence was called.
 
     Note: With GitPython, some operations are mocked differently as they don't use direct command line calls.
@@ -224,7 +224,7 @@ def assert_partial_clone_calls(mock: AsyncMock, cfg: CloneConfig, commit: str) -
     # With GitPython, sparse-checkout operations may be called differently
 
 
-def assert_submodule_calls(mock: AsyncMock, cfg: CloneConfig) -> None:
+def assert_submodule_calls(mock: AsyncMock, cfg: CloneConfig) -> None:  # pylint: disable=unused-argument
     """Assert that submodule update commands were called."""
     # With GitPython, submodule operations are handled through the repo object
     # The exact call pattern may differ from direct git commands

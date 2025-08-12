@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.server import Server  # pylint: disable=import-error
+from mcp.server.stdio import stdio_server  # pylint: disable=import-error
+from mcp.types import TextContent, Tool  # pylint: disable=import-error
 
 from gitingest.entrypoint import ingest_async
 from gitingest.utils.logging_config import get_logger

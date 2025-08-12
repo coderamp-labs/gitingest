@@ -180,7 +180,9 @@ async def _async_main(
     if mcp_server:
         # Dynamic import to avoid circular imports and optional dependency
         try:
-            from gitingest.mcp_server import start_mcp_server
+            from gitingest.mcp_server import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+                start_mcp_server,
+            )
 
             await start_mcp_server()
         except ImportError as e:
