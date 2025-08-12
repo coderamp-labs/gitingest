@@ -13,6 +13,7 @@ from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.pattern_utils import process_patterns
+from server.memory_metrics import MemoryTracker
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
 from server.s3_utils import (
     _build_s3_url,
@@ -292,36 +293,44 @@ async def process_query(
         return s3_response
 
     clone_config = query.extract_clone_config()
-    await clone_repo(clone_config, token=token)
-
     short_repo_url = f"{query.user_name}/{query.repo_name}"
 
-    # The commit hash should always be available at this point
-    if not query.commit:
-        msg = "Unexpected error: no commit hash found"
-        raise RuntimeError(msg)
+    # Track memory usage during the entire ingestion process
+    with MemoryTracker(input_text) as memory_tracker:
+        await clone_repo(clone_config, token=token)
 
-    try:
-        summary, tree, content = ingest_query(query)
+        # Update peak memory after cloning
+        memory_tracker.update_peak()
 
-        # Clean up repository immediately after ingestion to free memory
-        _cleanup_repository(clone_config)
+        # The commit hash should always be available at this point
+        if not query.commit:
+            msg = "Unexpected error: no commit hash found"
+            raise RuntimeError(msg)
 
-        # Use StringIO for memory-efficient string concatenation
-        digest_buffer = StringIO()
         try:
-            digest_buffer.write(tree)
-            digest_buffer.write("\n")
-            digest_buffer.write(content)
-            digest_content = digest_buffer.getvalue()
-        finally:
-            digest_buffer.close()
-        _store_digest_content(query, clone_config, digest_content, summary, tree, content)
-    except Exception as exc:
-        _print_error(query.url, exc, max_file_size, pattern_type, pattern)
-        # Clean up repository even if processing failed
-        _cleanup_repository(clone_config)
-        return IngestErrorResponse(error=f"{exc!s}")
+            summary, tree, content = ingest_query(query)
+
+            # Update peak memory after ingestion (this is likely the highest usage)
+            memory_tracker.update_peak()
+
+            # Clean up repository immediately after ingestion to free memory
+            _cleanup_repository(clone_config)
+
+            # Use StringIO for memory-efficient string concatenation
+            digest_buffer = StringIO()
+            try:
+                digest_buffer.write(tree)
+                digest_buffer.write("\n")
+                digest_buffer.write(content)
+                digest_content = digest_buffer.getvalue()
+            finally:
+                digest_buffer.close()
+            _store_digest_content(query, clone_config, digest_content, summary, tree, content)
+        except Exception as exc:
+            _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+            # Clean up repository even if processing failed
+            _cleanup_repository(clone_config)
+            return IngestErrorResponse(error=f"{exc!s}")
 
     if len(content) > MAX_DISPLAY_SIZE:
         content = (

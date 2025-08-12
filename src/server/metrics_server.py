@@ -7,6 +7,9 @@ from prometheus_client import REGISTRY, generate_latest
 
 from gitingest.utils.logging_config import get_logger
 
+# Import to ensure memory metrics are registered
+from server import memory_metrics  # noqa: F401 # pylint: disable=unused-import
+
 # Create a logger for this module
 logger = get_logger(__name__)
 

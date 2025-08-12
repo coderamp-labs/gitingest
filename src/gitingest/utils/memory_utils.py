@@ -72,10 +72,10 @@ def log_memory_stats(context: str = "") -> None:
 
     """
     memory_stats = get_memory_usage()
-    logger.info(
-        "Memory usage %s",
-        context,
+    logger.debug(
+        "Memory usage statistics",
         extra={
+            "context": context,
             "memory_rss_mb": round(memory_stats["rss_mb"], 2),
             "memory_vms_mb": round(memory_stats["vms_mb"], 2),
             "memory_percent": round(memory_stats["percent"], 2),
