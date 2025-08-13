@@ -32,7 +32,7 @@ jobs:
           repositories: '${{ env.FLUX_REPO }}'
 
       - name: Checkout Flux repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: '${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}'
           token: '${{ steps.app-token.outputs.token }}'
@@ -120,7 +120,7 @@ jobs:
           repositories: '${{ env.FLUX_REPO }}'
 
       - name: Checkout Flux repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: '${{ env.FLUX_OWNER }}/${{ env.FLUX_REPO }}'
           token: '${{ steps.app-token.outputs.token }}'
