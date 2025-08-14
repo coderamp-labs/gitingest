@@ -44,7 +44,7 @@ def force_garbage_collection() -> None:
         logger.warning("Failed to force garbage collection", extra={"error": str(exc)})
 
 
-def check_memory_pressure(threshold_mb: float = 3000) -> bool:
+def check_memory_pressure(threshold_mb: float = 2000) -> bool:
     """Check if memory usage is above threshold.
 
     Parameters

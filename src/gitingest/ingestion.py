@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES, MEMORY_CHECK_INTERVAL
+from gitingest.config import (
+    AGGRESSIVE_GC_INTERVAL,
+    MAX_DIRECTORY_DEPTH,
+    MAX_FILES,
+    MAX_TOTAL_SIZE_BYTES,
+    MEMORY_CHECK_INTERVAL,
+)
 from gitingest.output_formatter import format_node
 from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
@@ -265,14 +271,20 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
     stats.total_files += 1
     stats.total_size += file_size
 
-    # Check memory usage periodically and force GC if needed
+    # More aggressive memory management for large repositories
+    if stats.total_files % AGGRESSIVE_GC_INTERVAL == 0:
+        force_garbage_collection()
+
+    # Check memory usage periodically and force more aggressive GC if needed
     if stats.total_files % MEMORY_CHECK_INTERVAL == 0 and check_memory_pressure():
         logger.warning(
-            "Memory pressure detected, forcing garbage collection",
+            "Memory pressure detected, forcing aggressive garbage collection",
             extra={"files_processed": stats.total_files},
         )
+        # Multiple GC cycles for better cleanup
         force_garbage_collection()
-        log_memory_stats(f"after processing {stats.total_files} files")
+        force_garbage_collection()
+        log_memory_stats(f"after aggressive cleanup at {stats.total_files} files")
 
     child = FileSystemNode(
         name=path.name,

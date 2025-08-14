@@ -2,27 +2,20 @@
 
 from __future__ import annotations
 
-import ssl
 from io import StringIO
 from typing import TYPE_CHECKING
-
-import requests.exceptions
-import tiktoken
 
 from gitingest.schemas import FileSystemNode, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
 from gitingest.utils.logging_config import get_logger
+from gitingest.utils.memory_utils import force_garbage_collection, log_memory_stats
+from gitingest.utils.token_utils import clear_encoding_cache, count_tokens_optimized, format_token_count
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
 
 # Initialize logger for this module
 logger = get_logger(__name__)
-
-_TOKEN_THRESHOLDS: list[tuple[int, str]] = [
-    (1_000_000, "M"),
-    (1_000, "k"),
-]
 
 
 def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, str]:
@@ -52,13 +45,33 @@ def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, 
         summary += f"File: {node.name}\n"
         summary += f"Lines: {len(node.content.splitlines()):,}\n"
 
+    # Log memory before tree generation
+    log_memory_stats("before tree structure generation")
+
     tree = "Directory structure:\n" + _create_tree_structure(query, node=node)
+
+    # Log memory before content gathering (this is the memory-intensive part)
+    log_memory_stats("before content gathering")
 
     content = _gather_file_contents(node)
 
-    token_estimate = _format_token_count(tree + content)
-    if token_estimate:
-        summary += f"\nEstimated tokens: {token_estimate}"
+    # Force garbage collection after content gathering
+    force_garbage_collection()
+    log_memory_stats("after content gathering and cleanup")
+
+    # Count tokens with optimization
+    token_count = count_tokens_optimized(tree + content)
+    if token_count > 0:
+        summary += f"\nEstimated tokens: {format_token_count(token_count)}"
+
+    # Final cleanup
+    if hasattr(node, "clear_content_cache_recursive"):
+        node.clear_content_cache_recursive()
+
+    # Clear the tiktoken encoding cache to free memory
+    clear_encoding_cache()
+    force_garbage_collection()
+    log_memory_stats("after final cache and encoding cleanup")
 
     return summary, tree, content
 
@@ -133,7 +146,12 @@ def _gather_file_contents(node: FileSystemNode) -> str:
 
 
 def _gather_file_contents_recursive(node: FileSystemNode, buffer: StringIO) -> None:
-    """Recursively gather file contents into a StringIO buffer to reduce memory usage.
+    """Recursively gather file contents with memory optimization.
+
+    This version includes memory optimizations:
+    - Progressive content cache clearing
+    - Periodic garbage collection
+    - Memory-aware processing
 
     Parameters
     ----------
@@ -144,11 +162,20 @@ def _gather_file_contents_recursive(node: FileSystemNode, buffer: StringIO) -> N
 
     """
     if node.type != FileSystemNodeType.DIRECTORY:
+        # Write content and immediately clear cache to free memory
         buffer.write(node.content_string)
+        node.clear_content_cache()
         return
 
-    for child in node.children:
+    for files_processed, child in enumerate(node.children, 1):
         _gather_file_contents_recursive(child, buffer)
+
+        # Progressive cleanup every 10 files to prevent memory accumulation
+        if files_processed % 10 == 0:
+            force_garbage_collection()
+
+    # Clear content cache for this directory after processing all children
+    node.clear_content_cache()
 
 
 def _create_tree_structure(
@@ -201,35 +228,3 @@ def _create_tree_structure(
         for i, child in enumerate(node.children):
             tree_str += _create_tree_structure(query, node=child, prefix=prefix, is_last=i == len(node.children) - 1)
     return tree_str
-
-
-def _format_token_count(text: str) -> str | None:
-    """Return a human-readable token-count string (e.g. 1.2k, 1.2 M).
-
-    Parameters
-    ----------
-    text : str
-        The text string for which the token count is to be estimated.
-
-    Returns
-    -------
-    str | None
-        The formatted number of tokens as a string (e.g., ``"1.2k"``, ``"1.2M"``), or ``None`` if an error occurs.
-
-    """
-    try:
-        encoding = tiktoken.get_encoding("o200k_base")  # gpt-4o, gpt-4o-mini
-        total_tokens = len(encoding.encode(text, disallowed_special=()))
-    except (ValueError, UnicodeEncodeError) as exc:
-        logger.warning("Failed to estimate token size", extra={"error": str(exc)})
-        return None
-    except (requests.exceptions.RequestException, ssl.SSLError) as exc:
-        # If network errors, skip token count estimation instead of erroring out
-        logger.warning("Failed to download tiktoken model", extra={"error": str(exc)})
-        return None
-
-    for threshold, suffix in _TOKEN_THRESHOLDS:
-        if total_tokens >= threshold:
-            return f"{total_tokens / threshold:.1f}{suffix}"
-
-    return str(total_tokens)

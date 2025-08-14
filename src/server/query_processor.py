@@ -12,6 +12,7 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
+from gitingest.utils.memory_utils import force_garbage_collection
 from gitingest.utils.pattern_utils import process_patterns
 from server.memory_metrics import MemoryTracker
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
@@ -351,7 +352,8 @@ async def process_query(
 
         # Repository was already cleaned up after ingestion to free memory earlier
 
-        return IngestSuccessResponse(
+        # Create response
+        response = IngestSuccessResponse(
             repo_url=input_text,
             short_repo_url=short_repo_url,
             summary=summary,
@@ -362,6 +364,14 @@ async def process_query(
             pattern_type=pattern_type,
             pattern=pattern,
         )
+
+        # Aggressive cleanup of large strings to free memory
+        del tree
+        del content
+        del summary
+        force_garbage_collection()
+
+        return response
 
 
 def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
