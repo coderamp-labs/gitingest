@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/coderamp-labs/gitingest/compare/v0.3.1...v0.4.0) (2025-08-16)
+
+
+### Features
+
+* use gitpython for git stuff ([#504](https://github.com/coderamp-labs/gitingest/issues/504)) ([c057f6e](https://github.com/coderamp-labs/gitingest/commit/c057f6e06271372f1e5dd054d62e416872620b10))
+* **web:** add version info display ([#483](https://github.com/coderamp-labs/gitingest/issues/483)) ([867c2d9](https://github.com/coderamp-labs/gitingest/commit/867c2d904e57ef2b329ba863661062cc92be39c9))
+
 ## [0.3.1](https://github.com/coderamp-labs/gitingest/compare/v0.3.0...v0.3.1) (2025-07-31)
 
 
