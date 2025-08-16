@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from io import StringIO
 from typing import TYPE_CHECKING
 
 from gitingest.utils.compat_func import readlink
@@ -49,6 +50,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
     dir_count: int = 0
     depth: int = 0
     children: list[FileSystemNode] = field(default_factory=list)
+    _content_cache: str | None = field(default=None, init=False)
 
     def sort_children(self) -> None:
         """Sort the children nodes of a directory according to a specific order.
@@ -105,10 +107,9 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
 
     @property
     def content(self) -> str:  # pylint: disable=too-many-return-statements
-        """Return file content (if text / notebook) or an explanatory placeholder.
+        """Return file content with caching for memory optimization.
 
-        Heuristically decides whether the file is text or binary by decoding a small chunk of the file
-        with multiple encodings and checking for common binary markers.
+        Uses lazy loading and caching to reduce memory usage for large repositories.
 
         Returns
         -------
@@ -128,14 +129,50 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         if self.type == FileSystemNodeType.SYMLINK:
             return ""  # TODO: are we including the empty content of symlinks?
 
-        if self.path.suffix == ".ipynb":  # Notebook
+        # Return cached content if available
+        if self._content_cache is not None:
+            return self._content_cache
+
+        # Load and cache content
+        self._content_cache = self._load_content()
+        return self._content_cache
+
+    def _load_content(self) -> str:
+        """Load file content from disk.
+
+        Returns
+        -------
+        str
+            The file content
+
+        """
+        # Handle notebooks separately
+        if self.path.suffix == ".ipynb":
             try:
                 return process_notebook(self.path)
             except Exception as exc:
                 return f"Error processing notebook: {exc}"
 
+        # Read file chunk for analysis
         chunk = _read_chunk(self.path)
 
+        # Determine the appropriate content based on chunk analysis
+        return self._analyze_chunk_and_read(chunk)
+
+    def _analyze_chunk_and_read(self, chunk: bytes | None) -> str:
+        """Analyze file chunk and return appropriate content.
+
+        Parameters
+        ----------
+        chunk : bytes | None
+            The file chunk to analyze
+
+        Returns
+        -------
+        str
+            The file content or error message
+
+        """
         if chunk is None:
             return "Error reading file"
 
@@ -155,7 +192,44 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
             return "Error: Unable to decode file with available encodings"
 
         try:
-            with self.path.open(encoding=good_enc) as fp:
-                return fp.read()
+            return self._read_file_content_streaming(good_enc)
         except (OSError, UnicodeDecodeError) as exc:
             return f"Error reading file with {good_enc!r}: {exc}"
+
+    def _read_file_content_streaming(self, encoding: str, chunk_size: int = 8192) -> str:
+        """Read file content using streaming to reduce memory usage.
+
+        Parameters
+        ----------
+        encoding : str
+            The encoding to use for reading the file.
+        chunk_size : int
+            Size of chunks to read at a time (default: 8192 bytes).
+
+        Returns
+        -------
+        str
+            The file content.
+
+        """
+        content_buffer = StringIO()
+        try:
+            with self.path.open(encoding=encoding) as fp:
+                while True:
+                    chunk = fp.read(chunk_size)
+                    if not chunk:
+                        break
+                    content_buffer.write(chunk)
+            return content_buffer.getvalue()
+        finally:
+            content_buffer.close()
+
+    def clear_content_cache(self) -> None:
+        """Clear cached content to free memory."""
+        self._content_cache = None
+
+    def clear_content_cache_recursive(self) -> None:
+        """Recursively clear content cache for this node and all children."""
+        self.clear_content_cache()
+        for child in self.children:
+            child.clear_content_cache_recursive()

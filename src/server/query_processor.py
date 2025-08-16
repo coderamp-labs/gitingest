@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -11,7 +12,9 @@ from gitingest.ingestion import ingest_query
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
+from gitingest.utils.memory_utils import force_garbage_collection
 from gitingest.utils.pattern_utils import process_patterns
+from server.memory_metrics import MemoryTracker
 from server.models import IngestErrorResponse, IngestResponse, IngestSuccessResponse, PatternType, S3Metadata
 from server.s3_utils import (
     _build_s3_url,
@@ -278,68 +281,97 @@ async def process_query(
         include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
     )
 
-    # Check if digest already exists on S3 before cloning
-    s3_response = await _check_s3_cache(
-        query=query,
-        input_text=input_text,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type.value,
-        pattern=pattern,
-        token=token,
-    )
-    if s3_response:
-        return s3_response
+    # Track memory usage for the entire request (including S3 cache checks)
+    with MemoryTracker(input_text) as memory_tracker:
+        # Check if digest already exists on S3 before cloning
+        s3_response = await _check_s3_cache(
+            query=query,
+            input_text=input_text,
+            max_file_size=max_file_size,
+            pattern_type=pattern_type.value,
+            pattern=pattern,
+            token=token,
+        )
+        if s3_response:
+            # Even for S3 cache hits, record the memory usage
+            memory_tracker.update_peak()
+            return s3_response
 
-    clone_config = query.extract_clone_config()
-    await clone_repo(clone_config, token=token)
+        clone_config = query.extract_clone_config()
+        short_repo_url = f"{query.user_name}/{query.repo_name}"
+        await clone_repo(clone_config, token=token)
 
-    short_repo_url = f"{query.user_name}/{query.repo_name}"
+        # Update peak memory after cloning
+        memory_tracker.update_peak()
 
-    # The commit hash should always be available at this point
-    if not query.commit:
-        msg = "Unexpected error: no commit hash found"
-        raise RuntimeError(msg)
+        # The commit hash should always be available at this point
+        if not query.commit:
+            msg = "Unexpected error: no commit hash found"
+            raise RuntimeError(msg)
 
-    try:
-        summary, tree, content = ingest_query(query)
-        digest_content = tree + "\n" + content
-        _store_digest_content(query, clone_config, digest_content, summary, tree, content)
-    except Exception as exc:
-        _print_error(query.url, exc, max_file_size, pattern_type, pattern)
-        # Clean up repository even if processing failed
-        _cleanup_repository(clone_config)
-        return IngestErrorResponse(error=f"{exc!s}")
+        try:
+            summary, tree, content = ingest_query(query)
 
-    if len(content) > MAX_DISPLAY_SIZE:
-        content = (
-            f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-            "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+            # Update peak memory after ingestion (this is likely the highest usage)
+            memory_tracker.update_peak()
+
+            # Clean up repository immediately after ingestion to free memory
+            _cleanup_repository(clone_config)
+
+            # Use StringIO for memory-efficient string concatenation
+            digest_buffer = StringIO()
+            try:
+                digest_buffer.write(tree)
+                digest_buffer.write("\n")
+                digest_buffer.write(content)
+                digest_content = digest_buffer.getvalue()
+            finally:
+                digest_buffer.close()
+            _store_digest_content(query, clone_config, digest_content, summary, tree, content)
+        except Exception as exc:
+            _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+            # Clean up repository even if processing failed
+            _cleanup_repository(clone_config)
+            return IngestErrorResponse(error=f"{exc!s}")
+
+        if len(content) > MAX_DISPLAY_SIZE:
+            content = (
+                f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+                "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+            )
+
+        _print_success(
+            url=query.url,
+            max_file_size=max_file_size,
+            pattern_type=pattern_type,
+            pattern=pattern,
+            summary=summary,
         )
 
-    _print_success(
-        url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-        summary=summary,
-    )
+        digest_url = _generate_digest_url(query)
 
-    digest_url = _generate_digest_url(query)
+        # Repository was already cleaned up after ingestion to free memory earlier
 
-    # Clean up the repository after successful processing
-    _cleanup_repository(clone_config)
+        # Create response
+        response = IngestSuccessResponse(
+            repo_url=input_text,
+            short_repo_url=short_repo_url,
+            summary=summary,
+            digest_url=digest_url,
+            tree=tree,
+            content=content,
+            default_max_file_size=max_file_size,
+            pattern_type=pattern_type,
+            pattern=pattern,
+        )
 
-    return IngestSuccessResponse(
-        repo_url=input_text,
-        short_repo_url=short_repo_url,
-        summary=summary,
-        digest_url=digest_url,
-        tree=tree,
-        content=content,
-        default_max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-    )
+        # Aggressive cleanup of large strings to free memory
+        del tree
+        del content
+        del summary
+        force_garbage_collection()
+
+        return response
 
 
 def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:

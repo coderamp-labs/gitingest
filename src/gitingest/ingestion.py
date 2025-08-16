@@ -5,11 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gitingest.config import MAX_DIRECTORY_DEPTH, MAX_FILES, MAX_TOTAL_SIZE_BYTES
+from gitingest.config import (
+    AGGRESSIVE_GC_INTERVAL,
+    MAX_DIRECTORY_DEPTH,
+    MAX_FILES,
+    MAX_TOTAL_SIZE_BYTES,
+    MEMORY_CHECK_INTERVAL,
+)
 from gitingest.output_formatter import format_node
 from gitingest.schemas import FileSystemNode, FileSystemNodeType, FileSystemStats
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
 from gitingest.utils.logging_config import get_logger
+from gitingest.utils.memory_utils import check_memory_pressure, force_garbage_collection, log_memory_stats
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
@@ -50,6 +57,9 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
             "max_file_size": query.max_file_size,
         },
     )
+
+    # Log initial memory usage
+    log_memory_stats("at ingestion start")
 
     subpath = Path(query.subpath.strip("/")).as_posix()
     path = query.local_path / subpath
@@ -116,6 +126,9 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
             "stats_total_size": stats.total_size,
         },
     )
+
+    # Log final memory usage
+    log_memory_stats("at ingestion completion")
 
     return format_node(root_node, query=query)
 
@@ -257,6 +270,21 @@ def _process_file(path: Path, parent_node: FileSystemNode, stats: FileSystemStat
 
     stats.total_files += 1
     stats.total_size += file_size
+
+    # More aggressive memory management for large repositories
+    if stats.total_files % AGGRESSIVE_GC_INTERVAL == 0:
+        force_garbage_collection()
+
+    # Check memory usage periodically and force more aggressive GC if needed
+    if stats.total_files % MEMORY_CHECK_INTERVAL == 0 and check_memory_pressure():
+        logger.warning(
+            "Memory pressure detected, forcing aggressive garbage collection",
+            extra={"files_processed": stats.total_files},
+        )
+        # Multiple GC cycles for better cleanup
+        force_garbage_collection()
+        force_garbage_collection()
+        log_memory_stats(f"after aggressive cleanup at {stats.total_files} files")
 
     child = FileSystemNode(
         name=path.name,
