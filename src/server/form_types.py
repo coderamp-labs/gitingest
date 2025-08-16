@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from fastapi import Form
 
@@ -13,4 +13,4 @@ if TYPE_CHECKING:
 
 StrForm: TypeAlias = Annotated[str, Form(...)]
 IntForm: TypeAlias = Annotated[int, Form(...)]
-OptStrForm: TypeAlias = Annotated[Optional[str], Form()]
+OptStrForm: TypeAlias = Annotated[str | None, Form()]

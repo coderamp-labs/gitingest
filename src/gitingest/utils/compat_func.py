@@ -1,6 +1,5 @@
 """Compatibility functions for Python 3.8."""
 
-import os
 from pathlib import Path
 
 
@@ -20,7 +19,7 @@ def readlink(path: Path) -> Path:
         The target of the symlink.
 
     """
-    return Path(os.readlink(path))
+    return Path(path).readlink()
 
 
 def removesuffix(s: str, suffix: str) -> str:
@@ -41,4 +40,4 @@ def removesuffix(s: str, suffix: str) -> str:
         String with suffix removed.
 
     """
-    return s[: -len(suffix)] if s.endswith(suffix) else s
+    return s.removesuffix(suffix)

@@ -1,6 +1,5 @@
 """Ingest endpoint for the API."""
 
-from typing import Union
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -97,7 +96,7 @@ async def api_ingest_get(
 @router.get("/api/download/file/{ingest_id}", response_model=None)
 async def download_ingest(
     ingest_id: UUID,
-) -> Union[RedirectResponse, FileResponse]:  # noqa: FA100 (future-rewritable-type-annotation) (pydantic)
+) -> RedirectResponse | FileResponse:
     """Download the first text file produced for an ingest ID.
 
     **This endpoint retrieves the first ``*.txt`` file produced during the ingestion process**

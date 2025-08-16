@@ -51,6 +51,7 @@ You can also replace `hub` with `ingest` in any GitHub URL to access the corresp
   - Token count
 - **CLI tool**: Run it as a shell command
 - **Python package**: Import it in your code
+- **MCP Server**: Model Context Protocol server for LLM integration
 
 ## 📚 Requirements
 
@@ -73,6 +74,12 @@ pip install gitingest[server]
 ```
 
 to include server dependencies for self-hosting.
+
+For MCP (Model Context Protocol) support:
+
+```bash
+pip install gitingest[mcp]
+```
 
 However, it might be a good idea to use `pipx` to install it.
 You can install `pipx` using your preferred package manager.
@@ -148,6 +155,47 @@ See more options and usage details with:
 
 ```bash
 gitingest --help
+```
+
+## 🤖 MCP (Model Context Protocol) Server
+
+Gitingest includes an MCP server that allows LLMs to directly access repository analysis capabilities through the Model Context Protocol.
+
+### Starting the MCP Server
+
+```bash
+# Start the MCP server with stdio transport
+python -m mcp_server
+```
+
+### Available Tools
+
+The MCP server provides the following tools:
+
+- **`ingest_repository`**: Ingest a Git repository or local directory and return a structured digest
+
+### Example MCP Client
+
+See `examples/mcp_client_example.py` for a complete example of how to use the MCP server.
+
+### Configuration
+
+Use the provided `examples/mcp-config.json` to configure the MCP server in your MCP client:
+
+#### Stdio Transport (Default)
+
+```json
+{
+  "mcpServers": {
+    "gitingest": {
+      "command": "python",
+      "args": ["-m", "mcp_server"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
 ```
 
 ## 🐍 Python package usage

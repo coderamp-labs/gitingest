@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "gitingest": {
+      "command": "gitingest",
+      "args": ["--mcp"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}

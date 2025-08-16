@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -113,7 +113,7 @@ class IngestErrorResponse(BaseModel):
 
 
 # Union type for API responses
-IngestResponse = Union[IngestSuccessResponse, IngestErrorResponse]
+IngestResponse = IngestSuccessResponse | IngestErrorResponse
 
 
 class S3Metadata(BaseModel):

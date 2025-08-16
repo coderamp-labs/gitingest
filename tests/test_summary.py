@@ -23,6 +23,7 @@ REF_CASES = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("path_type", "path"), PATH_CASES)
 @pytest.mark.parametrize(("ref_type", "ref"), REF_CASES)
 def test_ingest_summary(path_type: str, path: str, ref_type: str, ref: str) -> None:

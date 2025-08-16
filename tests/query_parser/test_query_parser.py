@@ -8,13 +8,17 @@ paths.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import pytest
 
 from gitingest.query_parser import parse_local_dir_path, parse_remote_repo
 from gitingest.utils.query_parser_utils import _is_valid_git_commit_hash
 from tests.conftest import DEMO_URL
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 if TYPE_CHECKING:
     from unittest.mock import AsyncMock
