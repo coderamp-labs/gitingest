@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import ssl
+from functools import singledispatchmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests.exceptions
 import tiktoken
+from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
 
-from gitingest.schemas import FileSystemNode, FileSystemNodeType
+from gitingest.schemas import FileSystemNode, Source
+from gitingest.schemas.filesystem import SEPARATOR, FileSystemNodeType
 from gitingest.utils.compat_func import readlink
 from gitingest.utils.logging_config import get_logger
 
@@ -22,84 +26,6 @@ _TOKEN_THRESHOLDS: list[tuple[int, str]] = [
     (1_000_000, "M"),
     (1_000, "k"),
 ]
-
-
-def format_node(node: FileSystemNode, query: IngestionQuery) -> tuple[str, str, str]:
-    """Generate a summary, directory structure, and file contents for a given file system node.
-
-    If the node represents a directory, the function will recursively process its contents.
-
-    Parameters
-    ----------
-    node : FileSystemNode
-        The file system node to be summarized.
-    query : IngestionQuery
-        The parsed query object containing information about the repository and query parameters.
-
-    Returns
-    -------
-    tuple[str, str, str]
-        A tuple containing the summary, directory structure, and file contents.
-
-    """
-    is_single_file = node.type == FileSystemNodeType.FILE
-    summary = _create_summary_prefix(query, single_file=is_single_file)
-
-    if node.type == FileSystemNodeType.DIRECTORY:
-        summary += f"Files analyzed: {node.file_count}\n"
-    elif node.type == FileSystemNodeType.FILE:
-        summary += f"File: {node.name}\n"
-        summary += f"Lines: {len(node.content.splitlines()):,}\n"
-
-    tree = "Directory structure:\n" + _create_tree_structure(query, node=node)
-
-    content = _gather_file_contents(node)
-
-    token_estimate = _format_token_count(tree + content)
-    if token_estimate:
-        summary += f"\nEstimated tokens: {token_estimate}"
-
-    return summary, tree, content
-
-
-def _create_summary_prefix(query: IngestionQuery, *, single_file: bool = False) -> str:
-    """Create a prefix string for summarizing a repository or local directory.
-
-    Includes repository name (if provided), commit/branch details, and subpath if relevant.
-
-    Parameters
-    ----------
-    query : IngestionQuery
-        The parsed query object containing information about the repository and query parameters.
-    single_file : bool
-        A flag indicating whether the summary is for a single file (default: ``False``).
-
-    Returns
-    -------
-    str
-        A summary prefix string containing repository, commit, branch, and subpath details.
-
-    """
-    parts = []
-
-    if query.user_name:
-        parts.append(f"Repository: {query.user_name}/{query.repo_name}")
-    else:
-        # Local scenario
-        parts.append(f"Directory: {query.slug}")
-
-    if query.tag:
-        parts.append(f"Tag: {query.tag}")
-    elif query.branch and query.branch not in ("main", "master"):
-        parts.append(f"Branch: {query.branch}")
-
-    if query.commit:
-        parts.append(f"Commit: {query.commit}")
-
-    if query.subpath != "/" and not single_file:
-        parts.append(f"Subpath: {query.subpath}")
-
-    return "\n".join(parts) + "\n"
 
 
 def _gather_file_contents(node: FileSystemNode) -> str:
@@ -208,3 +134,198 @@ def _format_token_count(text: str) -> str | None:
             return f"{total_tokens / threshold:.1f}{suffix}"
 
     return str(total_tokens)
+
+
+def generate_digest(context: Source) -> str:
+    """Generate a digest string from a Source object.
+
+    This is a convenience function that uses the DefaultFormatter to format a Source.
+
+    Parameters
+    ----------
+    context : Source
+        The Source object containing sources and query information.
+
+    Returns
+    -------
+    str
+        The formatted digest string.
+
+    """
+    formatter = DefaultFormatter()
+    return formatter.format(context, context.query)
+
+
+class Formatter:
+    """Base formatter class."""
+
+    def __init__(self, template_subdir: str) -> None:
+        self.separator = SEPARATOR
+        template_dir = Path(__file__).parent / "format" / template_subdir
+        self.env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+
+    def _get_template_for_node(self, node: Source) -> Template:
+        """Get template based on node class name."""
+        template_name = f"{node.__class__.__name__}.j2"
+        return self.env.get_template(template_name)
+
+
+class DefaultFormatter(Formatter):
+    """Default formatter for rendering filesystem nodes using Jinja2 templates."""
+
+    def __init__(self) -> None:
+        super().__init__("DefaultFormatter")
+
+    def format(self, source: Source, query: IngestionQuery) -> str:
+        """Format a source with the given query."""
+        if query is None:
+            # Handle case where query is None (shouldn't happen in normal usage)
+            raise ValueError("ContextV1 must have a valid query object")
+        
+        # Calculate and set token count for ContextV1
+        if hasattr(source, '_token_count'):
+            token_count = self._calculate_token_count(source)
+            source._token_count = token_count
+            # Also set token count in the extra dict
+            source.extra["token_count"] = token_count
+        
+        try:
+            return self._format_node(source, query)
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logging.error(f"Error in DefaultFormatter: {e}")
+            raise
+
+    def _calculate_token_count(self, source: Source) -> str:
+        """Calculate token count for the entire source."""
+        # Gather all content from the source
+        content = self._gather_all_content(source)
+        return _format_token_count(content) or "Unknown"
+
+    def _gather_all_content(self, node: Source) -> str:
+        """Recursively gather all content from the source tree."""
+        content_parts = []
+        
+        # Add content from the current node
+        if hasattr(node, 'content'):
+            content_parts.append(node.content)
+        
+        # Add content from all sources if it's a ContextV1
+        if hasattr(node, 'sources'):
+            for source in node.sources:
+                content_parts.append(self._gather_all_content(source))
+        
+        # Add content from children if it's a directory
+        if hasattr(node, 'children'):
+            for child in node.children:
+                content_parts.append(self._gather_all_content(child))
+        
+        return "\n".join(filter(None, content_parts))
+
+    @singledispatchmethod
+    def _format_node(self, node: Source, query: IngestionQuery) -> str:
+        """Dynamically format any node type based on available templates."""
+        try:
+            template = self._get_template_for_node(node)
+            # Provide common template variables
+            context_vars = {
+                "source": node,
+                "query": query,
+                "formatter": self,
+                "SEPARATOR": SEPARATOR,
+            }
+
+            return template.render(**context_vars)
+        except TemplateNotFound:
+            # Fallback: return content if available, otherwise empty string
+            return f"{getattr(node, 'content', '')}"
+
+
+class DebugFormatter(Formatter):
+    """Debug formatter that shows detailed information about filesystem nodes."""
+
+    def __init__(self) -> None:
+        super().__init__("DebugFormatter")
+
+    def _get_template_for_node(self, node: Source) -> Template:
+        """Get template based on node class name."""
+        template_name = f"{node.__class__.__name__}.j2"
+        return self.env.get_template(template_name)
+
+    def format(self, node: Source, query: IngestionQuery) -> str:
+        """Dynamically format any node type with debug information."""
+        try:
+            # Get the actual class name
+            class_name = node.__class__.__name__
+
+            # Get all field names (both from dataclass fields and regular attributes)
+            field_names = []
+
+            # Try to get dataclass fields first
+            def _raise_no_dataclass_fields() -> None:
+                msg = "No dataclass fields found"
+                raise AttributeError(msg)
+
+            try:
+                if hasattr(node, "__dataclass_fields__") and hasattr(node.__dataclass_fields__, "keys"):
+                    field_names.extend(node.__dataclass_fields__.keys())
+                else:
+                    _raise_no_dataclass_fields()  # Fall through to backup method
+            except (AttributeError, TypeError):
+                # Fall back to getting all non-private attributes
+                field_names = [
+                    attr for attr in dir(node) if not attr.startswith("_") and not callable(getattr(node, attr, None))
+                ]
+
+            # Format the debug output
+            fields_str = ", ".join(field_names)
+
+            # Try to get specific template, fallback to Source.j2
+            try:
+                template = self._get_template_for_node(node)
+            except TemplateNotFound:
+                template = self.env.get_template("Source.j2")
+
+            return template.render(
+                SEPARATOR=SEPARATOR,
+                class_name=class_name,
+                fields_str=fields_str,
+                node=node,
+                query=query,
+                formatter=self,
+            )
+        except TemplateNotFound:
+            # Ultimate fallback
+            return f"DEBUG: {node.__class__.__name__}"
+
+
+class SummaryFormatter(Formatter):
+    """Dedicated formatter for generating summaries of filesystem nodes."""
+
+    def __init__(self) -> None:
+        super().__init__("SummaryFormatter")
+
+    def format(self, source: Source, query: IngestionQuery) -> str:
+        """Generate the summary output."""
+        if query is None:
+            # Handle case where query is None (shouldn't happen in normal usage)
+            raise ValueError("ContextV1 must have a valid query object")
+        return self.summary(source, query)
+
+    @singledispatchmethod
+    def summary(self, node: Source, query: IngestionQuery) -> str:
+        """Dynamically generate summary for any node type based on available templates."""
+        try:
+            # Provide common template variables
+            context_vars = {
+                "source": node,
+                "query": query,
+                "formatter": self,
+            }
+
+            template = self._get_template_for_node(node)
+            return template.render(**context_vars)
+        except TemplateNotFound:
+            # Fallback: return name if available
+            return f"{getattr(node, 'name', '')}"

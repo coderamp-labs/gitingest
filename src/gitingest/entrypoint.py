@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from gitingest.clone import clone_repo
 from gitingest.config import MAX_FILE_SIZE
 from gitingest.ingestion import ingest_query
+from gitingest.output_formatter import DefaultFormatter
 from gitingest.query_parser import parse_local_dir_path, parse_remote_repo
 from gitingest.utils.auth import resolve_token
 from gitingest.utils.compat_func import removesuffix
@@ -44,12 +45,13 @@ async def ingest_async(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
-) -> tuple[str, str, str]:
+) -> str:
     """Ingest a source and process its contents.
 
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
-    and processes its files according to the specified query parameters. It returns a summary, a tree-like
-    structure of the files, and the content of the files. The results can optionally be written to an output file.
+    and processes its files according to the specified query parameters. It returns a single digest string.
+
+    The output is generated lazily using a ContextV1 object and the DefaultFormatter class.
 
     Parameters
     ----------
@@ -79,11 +81,8 @@ async def ingest_async(
 
     Returns
     -------
-    tuple[str, str, str]
-        A tuple containing:
-        - A summary string of the analyzed repository or directory.
-        - A tree-like string representation of the file structure.
-        - The content of the files in the repository or directory.
+    str
+        The full digest string.
 
     """
     logger.info("Starting ingestion process", extra={"source": source})
@@ -138,14 +137,15 @@ async def ingest_async(
             _apply_gitignores(query)
 
         logger.info("Processing files and generating output")
-        summary, tree, content = ingest_query(query)
 
         if output:
             logger.debug("Writing output to file", extra={"output_path": output})
-        await _write_output(tree, content=content, target=output)
-
+        context = ingest_query(query)
+        formatter = DefaultFormatter()
+        digest = formatter.format(context, context.query)
+        await _write_output(digest, content=None, target=output)
         logger.info("Ingestion completed successfully")
-        return summary, tree, content
+        return digest
 
 
 def ingest(
@@ -160,12 +160,13 @@ def ingest(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
-) -> tuple[str, str, str]:
+) -> str:
     """Provide a synchronous wrapper around ``ingest_async``.
 
     This function analyzes a source (URL or local path), clones the corresponding repository (if applicable),
-    and processes its files according to the specified query parameters. It returns a summary, a tree-like
-    structure of the files, and the content of the files. The results can optionally be written to an output file.
+    and processes its files according to the specified query parameters. It returns a single digest string.
+
+    The output is generated lazily using a ContextV1 object and the DefaultFormatter class.
 
     Parameters
     ----------
@@ -195,11 +196,8 @@ def ingest(
 
     Returns
     -------
-    tuple[str, str, str]
-        A tuple containing:
-        - A summary string of the analyzed repository or directory.
-        - A tree-like string representation of the file structure.
-        - The content of the files in the repository or directory.
+    str
+        The full digest string.
 
     See Also
     --------
@@ -208,7 +206,7 @@ def ingest(
     """
     return asyncio.run(
         ingest_async(
-            source=source,
+            source,
             max_file_size=max_file_size,
             include_patterns=include_patterns,
             exclude_patterns=exclude_patterns,

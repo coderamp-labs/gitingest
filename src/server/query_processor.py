@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
 from gitingest.ingestion import ingest_query
+from gitingest.output_formatter import DefaultFormatter, SummaryFormatter
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
@@ -301,28 +302,47 @@ async def process_query(
         raise RuntimeError(msg)
 
     try:
-        summary, tree, content = ingest_query(query)
-        digest_content = tree + "\n" + content
-        _store_digest_content(query, clone_config, digest_content, summary, tree, content)
+        context = ingest_query(query)
+        formatter = DefaultFormatter()
+        digest = formatter.format(context, context.query)
+        summary_formatter = SummaryFormatter()
+        summary = summary_formatter.format(context, context.query)
+
+        # Store digest based on S3 configuration
+        if is_s3_enabled():
+            # Upload to S3 instead of storing locally
+            s3_file_path = generate_s3_file_path(
+                source=query.url,
+                user_name=cast("str", query.user_name),
+                repo_name=cast("str", query.repo_name),
+                commit=query.commit,
+                subpath=query.subpath,
+                include_patterns=query.include_patterns,
+                ignore_patterns=query.ignore_patterns,
+            )
+            s3_url = upload_to_s3(
+                content=formatter.format(context, context.query), s3_file_path=s3_file_path, ingest_id=query.id
+            )
+            # Store S3 URL in query for later use
+            query.s3_url = s3_url
+        else:
+            # Store locally
+            local_txt_file = Path(clone_config.local_path).with_suffix(".txt")
+            logger.info("Writing digest to local file", extra={"file_path": str(local_txt_file)})
+            with local_txt_file.open("w", encoding="utf-8") as f:
+                f.write(digest)
+
     except Exception as exc:
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         # Clean up repository even if processing failed
         _cleanup_repository(clone_config)
         return IngestErrorResponse(error=f"{exc!s}")
 
-    if len(content) > MAX_DISPLAY_SIZE:
-        content = (
-            f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-            "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+    if len(digest) > MAX_DISPLAY_SIZE:
+        digest = (
+            f"(Digest cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+            "download full ingest to see more)\n" + digest[:MAX_DISPLAY_SIZE]
         )
-
-    _print_success(
-        url=query.url,
-        max_file_size=max_file_size,
-        pattern_type=pattern_type,
-        pattern=pattern,
-        summary=summary,
-    )
 
     digest_url = _generate_digest_url(query)
 
@@ -334,8 +354,8 @@ async def process_query(
         short_repo_url=short_repo_url,
         summary=summary,
         digest_url=digest_url,
-        tree=tree,
-        content=content,
+        tree=context.sources[0].tree,  # TODO: this is a hack to get the tree of the first source
+        content=digest,
         default_max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,

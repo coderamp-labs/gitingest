@@ -84,6 +84,7 @@ repos:
     rev: v1.36.4
     hooks:
       - id: djlint-reformat-jinja
+        exclude: ^src/gitingest/format/
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.45.0
