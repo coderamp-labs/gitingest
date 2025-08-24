@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import TypedDict
 
 import click
@@ -14,6 +15,15 @@ from gitingest.entrypoint import ingest_async
 
 # Import logging configuration first to intercept all logging
 from gitingest.utils.logging_config import get_logger
+
+# Optional MCP imports
+try:
+    from gitingest.mcp_server import start_mcp_server
+    from mcp_server.main import start_mcp_server_tcp
+
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -29,6 +39,10 @@ class _CLIArgs(TypedDict):
     include_submodules: bool
     token: str | None
     output: str | None
+    mcp: bool
+    transport: str
+    host: str
+    port: int
 
 
 @click.command()
@@ -76,6 +90,32 @@ class _CLIArgs(TypedDict):
     default=None,
     help="Output file path (default: digest.txt in current directory). Use '-' for stdout.",
 )
+@click.option(
+    "--mcp",
+    is_flag=True,
+    default=False,
+    help="Start the MCP (Model Context Protocol) server for LLM integration",
+)
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "tcp"]),
+    default="stdio",
+    show_default=True,
+    help="Transport protocol for MCP communication (only used with --mcp)",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind TCP server (only used with --mcp --transport tcp)",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8001,
+    show_default=True,
+    help="Port for TCP server (only used with --mcp --transport tcp)",
+)
 def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     """Run the CLI entry point to analyze a repo / directory and dump its contents.
 
@@ -98,6 +138,10 @@ def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     Output to stdout:
         $ gitingest -o -
         $ gitingest https://github.com/user/repo --output -
+
+    MCP server mode:
+        $ gitingest --mcp
+        $ gitingest --mcp --transport tcp --host 0.0.0.0 --port 8001
 
     With filtering:
         $ gitingest -i "*.py" -e "*.log"
@@ -125,6 +169,10 @@ async def _async_main(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    mcp: bool = False,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8001,
 ) -> None:
     """Analyze a directory or repository and create a text dump of its contents.
 
@@ -154,13 +202,41 @@ async def _async_main(
     output : str | None
         The path where the output file will be written (default: ``digest.txt`` in current directory).
         Use ``"-"`` to write to ``stdout``.
+    mcp : bool
+        If ``True``, starts the MCP (Model Context Protocol) server instead of normal operation (default: ``False``).
+    transport : str
+        Transport protocol for MCP communication: "stdio" or "tcp" (default: "stdio").
+    host : str
+        Host to bind TCP server (only used with transport="tcp", default: "127.0.0.1").
+    port : int
+        Port for TCP server (only used with transport="tcp", default: 8001).
 
     Raises
     ------
     click.Abort
         Raised if an error occurs during execution and the command must be aborted.
+    click.ClickException
+        Raised if MCP server dependencies are not installed when MCP mode is requested.
 
     """
+    # Check if MCP server mode is requested
+    if mcp:
+        if not MCP_AVAILABLE:
+            msg = "MCP server dependencies not installed"
+            raise click.ClickException(msg)
+
+        if transport == "tcp":
+            # Use TCP transport with FastMCP and metrics support
+            # Enable metrics for TCP mode if not already set
+            if os.getenv("GITINGEST_METRICS_ENABLED") is None:
+                os.environ["GITINGEST_METRICS_ENABLED"] = "true"
+
+            await start_mcp_server_tcp(host, port)
+        else:
+            # Use stdio transport (default) - metrics not available in stdio mode
+            await start_mcp_server()
+        return
+
     try:
         # Normalise pattern containers (the ingest layer expects sets)
         exclude_patterns = set(exclude_pattern) if exclude_pattern else set()

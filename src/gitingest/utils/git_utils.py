@@ -8,7 +8,7 @@ import re
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Generator, Iterable
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse, urlunparse
 
 import git
@@ -18,6 +18,8 @@ from gitingest.utils.exceptions import InvalidGitHubTokenError
 from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Generator, Iterable
+
     from gitingest.schemas import CloneConfig
 
 # Initialize logger for this module
@@ -217,6 +219,13 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
 
     # Use GitPython to get remote references
     try:
+        git_cmd = git.Git()
+
+        # Prepare environment with authentication if needed
+        if token and is_github_host(url):
+            auth_url = _add_token_to_url(url, token)
+            url = auth_url
+
         fetch_tags = ref_type == "tags"
         to_fetch = "tags" if fetch_tags else "heads"
 
@@ -226,11 +235,8 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
             cmd_args.append("--refs")  # Filter out peeled tag objects
         cmd_args.append(url)
 
-        # Run the command with proper authentication
-        with git_auth_context(url, token) as (git_cmd, auth_url):
-            # Replace the URL in cmd_args with the authenticated URL
-            cmd_args[-1] = auth_url  # URL is the last argument
-            output = git_cmd.ls_remote(*cmd_args)
+        # Run the command using git_cmd.ls_remote() method
+        output = git_cmd.ls_remote(*cmd_args)
 
         # Parse output
         return [
@@ -263,7 +269,7 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
     Raises
     ------
     ValueError
-        If the local path is not a valid git repository.
+        If the provided local_path is not a valid git repository.
 
     """
     try:
@@ -276,11 +282,10 @@ def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.
             key, value = auth_header.split("=", 1)
             repo.git.config(key, value)
 
+        return repo  # noqa: TRY300
     except git.InvalidGitRepositoryError as exc:
         msg = f"Invalid git repository at {local_path}"
         raise ValueError(msg) from exc
-
-    return repo
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -479,9 +484,15 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
 
     """
     try:
-        # Execute ls-remote command with proper authentication
-        with git_auth_context(url, token) as (git_cmd, auth_url):
-            output = git_cmd.ls_remote(auth_url, pattern)
+        git_cmd = git.Git()
+
+        # Prepare authentication if needed
+        auth_url = url
+        if token and is_github_host(url):
+            auth_url = _add_token_to_url(url, token)
+
+        # Execute ls-remote command
+        output = git_cmd.ls_remote(auth_url, pattern)
         lines = output.splitlines()
 
         sha = _pick_commit_sha(lines)
@@ -489,11 +500,10 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             msg = f"{pattern!r} not found in {url}"
             raise ValueError(msg)
 
+        return sha  # noqa: TRY300
     except git.GitCommandError as exc:
-        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
+        msg = f"Failed to resolve {pattern} in {url}: {exc}"
         raise ValueError(msg) from exc
-
-    return sha
 
 
 def _pick_commit_sha(lines: Iterable[str]) -> str | None:
@@ -529,3 +539,37 @@ def _pick_commit_sha(lines: Iterable[str]) -> str | None:
             first_non_peeled = sha
 
     return first_non_peeled  # branch or lightweight tag (or None)
+
+
+def _add_token_to_url(url: str, token: str) -> str:
+    """Add authentication token to GitHub URL.
+
+    Parameters
+    ----------
+    url : str
+        The original GitHub URL.
+    token : str
+        The GitHub token to add.
+
+    Returns
+    -------
+    str
+        The URL with embedded authentication.
+
+    """
+    parsed = urlparse(url)
+    # Add token as username in URL (GitHub supports this)
+    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )

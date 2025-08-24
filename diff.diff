@@ -1,0 +1,365 @@
+diff --git a/src/gitingest/clone.py b/src/gitingest/clone.py
+index 1b776e8..b486fa1 100644
+--- a/src/gitingest/clone.py
++++ b/src/gitingest/clone.py
+@@ -14,7 +14,6 @@ from gitingest.utils.git_utils import (
+     checkout_partial_clone,
+     create_git_repo,
+     ensure_git_installed,
+-    git_auth_context,
+     is_github_host,
+     resolve_commit,
+ )
+@@ -87,7 +86,12 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
+     commit = await resolve_commit(config, token=token)
+     logger.debug("Resolved commit", extra={"commit": commit})
+
+-    # Clone the repository using GitPython with proper authentication
++    # Prepare URL with authentication if needed
++    clone_url = url
++    if token and is_github_host(url):
++        clone_url = _add_token_to_url(url, token)
++
++    # Clone the repository using GitPython
+     logger.info("Executing git clone operation", extra={"url": "<redacted>", "local_path": local_path})
+     try:
+         clone_kwargs = {
+@@ -96,20 +100,18 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
+             "depth": 1,
+         }
+
+-        with git_auth_context(url, token) as (git_cmd, auth_url):
++        if partial_clone:
++            # GitPython doesn't directly support --filter and --sparse in clone
++            # We'll need to use git.Git() for the initial clone with these options
++            git_cmd = git.Git()
++            cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+             if partial_clone:
+-                # For partial clones, use git.Git() with filter and sparse options
+-                cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                 cmd_args.extend(["--filter=blob:none", "--sparse"])
+-                cmd_args.extend([auth_url, local_path])
+-                git_cmd.clone(*cmd_args)
+-            elif token and is_github_host(url):
+-                # For authenticated GitHub repos, use git_cmd with auth URL
+-                cmd_args = ["--single-branch", "--no-checkout", "--depth=1", auth_url, local_path]
+-                git_cmd.clone(*cmd_args)
+-            else:
+-                # For non-authenticated repos, use the standard GitPython method
+-                git.Repo.clone_from(url, local_path, **clone_kwargs)
++            cmd_args.extend([clone_url, local_path])
++            git_cmd.clone(*cmd_args)
++        else:
++            git.Repo.clone_from(clone_url, local_path, **clone_kwargs)
++
+         logger.info("Git clone completed successfully")
+     except git.GitCommandError as exc:
+         msg = f"Git clone failed: {exc}"
+diff --git a/src/gitingest/utils/git_utils.py b/src/gitingest/utils/git_utils.py
+index 1c1a986..b7f293a 100644
+--- a/src/gitingest/utils/git_utils.py
++++ b/src/gitingest/utils/git_utils.py
+@@ -6,12 +6,13 @@ import asyncio
+ import base64
+ import re
+ import sys
+-from contextlib import contextmanager
+ from pathlib import Path
+-from typing import TYPE_CHECKING, Final, Generator, Iterable
++from typing import TYPE_CHECKING, Final, Iterable
+ from urllib.parse import urlparse, urlunparse
+
+ import git
++import httpx
++from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+
+ from gitingest.utils.compat_func import removesuffix
+ from gitingest.utils.exceptions import InvalidGitHubTokenError
+@@ -135,15 +136,35 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
+     bool
+         ``True`` if the repository exists, ``False`` otherwise.
+
++    Raises
++    ------
++    RuntimeError
++        If the host returns an unrecognised status code.
++
+     """
+-    try:
+-        # Try to resolve HEAD - if repo exists, this will work
+-        await _resolve_ref_to_sha(url, "HEAD", token=token)
+-    except (ValueError, Exception):
+-        # Repository doesn't exist, is private without proper auth, or other error
+-        return False
++    headers = {}
++
++    if token and is_github_host(url):
++        host, owner, repo = _parse_github_url(url)
++        # Public GitHub vs. GitHub Enterprise
++        base_api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
++        url = f"{base_api}/repos/{owner}/{repo}"
++        headers["Authorization"] = f"Bearer {token}"
+
+-    return True
++    async with httpx.AsyncClient(follow_redirects=True) as client:
++        try:
++            response = await client.head(url, headers=headers)
++        except httpx.RequestError:
++            return False
++
++    status_code = response.status_code
++
++    if status_code == HTTP_200_OK:
++        return True
++    if status_code in {HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND}:
++        return False
++    msg = f"Unexpected HTTP status {status_code} for {url}"
++    raise RuntimeError(msg)
+
+
+ def _parse_github_url(url: str) -> tuple[str, str, str]:
+@@ -217,6 +238,13 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
+
+     # Use GitPython to get remote references
+     try:
++        git_cmd = git.Git()
++
++        # Prepare authentication if needed
++        if token and is_github_host(url):
++            auth_url = _add_token_to_url(url, token)
++            url = auth_url
++
+         fetch_tags = ref_type == "tags"
+         to_fetch = "tags" if fetch_tags else "heads"
+
+@@ -226,11 +254,8 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
+             cmd_args.append("--refs")  # Filter out peeled tag objects
+         cmd_args.append(url)
+
+-        # Run the command with proper authentication
+-        with git_auth_context(url, token) as (git_cmd, auth_url):
+-            # Replace the URL in cmd_args with the authenticated URL
+-            cmd_args[-1] = auth_url  # URL is the last argument
+-            output = git_cmd.ls_remote(*cmd_args)
++        # Run the command using git_cmd.ls_remote() method
++        output = git_cmd.ls_remote(*cmd_args)
+
+         # Parse output
+         return [
+@@ -314,70 +339,6 @@ def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
+     return f"http.https://{hostname}/.extraheader=Authorization: Basic {basic}"
+
+
+-def create_authenticated_url(url: str, token: str | None = None) -> str:
+-    """Create an authenticated URL for Git operations.
+-
+-    This is the safest approach for multi-user environments - no global state.
+-
+-    Parameters
+-    ----------
+-    url : str
+-        The repository URL.
+-    token : str | None
+-        GitHub personal access token (PAT) for accessing private repositories.
+-
+-    Returns
+-    -------
+-    str
+-        The URL with authentication embedded (for GitHub) or original URL.
+-
+-    """
+-    if not (token and is_github_host(url)):
+-        return url
+-
+-    parsed = urlparse(url)
+-    # Add token as username in URL (GitHub supports this)
+-    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+-    if parsed.port:
+-        netloc += f":{parsed.port}"
+-
+-    return urlunparse(
+-        (
+-            parsed.scheme,
+-            netloc,
+-            parsed.path,
+-            parsed.params,
+-            parsed.query,
+-            parsed.fragment,
+-        ),
+-    )
+-
+-
+-@contextmanager
+-def git_auth_context(url: str, token: str | None = None) -> Generator[tuple[git.Git, str]]:
+-    """Context manager that provides Git command and authenticated URL.
+-
+-    Returns both a Git command object and the authenticated URL to use.
+-    This avoids any global state contamination between users.
+-
+-    Parameters
+-    ----------
+-    url : str
+-        The repository URL to check if authentication is needed.
+-    token : str | None
+-        GitHub personal access token (PAT) for accessing private repositories.
+-
+-    Yields
+-    ------
+-    Generator[tuple[git.Git, str]]
+-        Tuple of (Git command object, authenticated URL to use).
+-
+-    """
+-    git_cmd = git.Git()
+-    auth_url = create_authenticated_url(url, token)
+-    yield git_cmd, auth_url
+-
+-
+ def validate_github_token(token: str) -> None:
+     """Validate the format of a GitHub Personal Access Token.
+
+@@ -479,9 +440,15 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None)
+
+     """
+     try:
+-        # Execute ls-remote command with proper authentication
+-        with git_auth_context(url, token) as (git_cmd, auth_url):
+-            output = git_cmd.ls_remote(auth_url, pattern)
++        git_cmd = git.Git()
++
++        # Prepare authentication if needed
++        auth_url = url
++        if token and is_github_host(url):
++            auth_url = _add_token_to_url(url, token)
++
++        # Execute ls-remote command
++        output = git_cmd.ls_remote(auth_url, pattern)
+         lines = output.splitlines()
+
+         sha = _pick_commit_sha(lines)
+@@ -490,7 +457,7 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None)
+             raise ValueError(msg)
+
+     except git.GitCommandError as exc:
+-        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
++        msg = f"Failed to resolve {pattern} in {url}: {exc}"
+         raise ValueError(msg) from exc
+
+     return sha
+@@ -547,8 +514,6 @@ def _add_token_to_url(url: str, token: str) -> str:
+         The URL with embedded authentication.
+
+     """
+-    from urllib.parse import urlparse, urlunparse
+-
+     parsed = urlparse(url)
+     # Add token as username in URL (GitHub supports this)
+     netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+diff --git a/src/server/query_processor.py b/src/server/query_processor.py
+index f2f2ae9..03f52f1 100644
+--- a/src/server/query_processor.py
++++ b/src/server/query_processor.py
+@@ -308,7 +308,7 @@ async def process_query(
+         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
+         # Clean up repository even if processing failed
+         _cleanup_repository(clone_config)
+-        return IngestErrorResponse(error=f"{exc!s}")
++        return IngestErrorResponse(error=str(exc))
+
+     if len(content) > MAX_DISPLAY_SIZE:
+         content = (
+diff --git a/tests/test_clone.py b/tests/test_clone.py
+index 6abbd87..8c44523 100644
+--- a/tests/test_clone.py
++++ b/tests/test_clone.py
+@@ -8,8 +8,11 @@ from __future__ import annotations
+
+ import sys
+ from typing import TYPE_CHECKING
++from unittest.mock import AsyncMock
+
++import httpx
+ import pytest
++from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+
+ from gitingest.clone import clone_repo
+ from gitingest.schemas import CloneConfig
+@@ -18,7 +21,6 @@ from tests.conftest import DEMO_URL, LOCAL_REPO_PATH
+
+ if TYPE_CHECKING:
+     from pathlib import Path
+-    from unittest.mock import AsyncMock
+
+     from pytest_mock import MockerFixture
+
+@@ -91,30 +93,24 @@ async def test_clone_nonexistent_repository(repo_exists_true: AsyncMock) -> None
+
+ @pytest.mark.asyncio
+ @pytest.mark.parametrize(
+-    ("git_command_succeeds", "expected"),
++    ("status_code", "expected"),
+     [
+-        (True, True),  # git ls-remote succeeds -> repo exists
+-        (False, False),  # git ls-remote fails -> repo doesn't exist or no access
++        (HTTP_200_OK, True),
++        (HTTP_401_UNAUTHORIZED, False),
++        (HTTP_403_FORBIDDEN, False),
++        (HTTP_404_NOT_FOUND, False),
+     ],
+ )
+-async def test_check_repo_exists(
+-    git_command_succeeds: bool,  # noqa: FBT001
+-    *,
+-    expected: bool,
+-    mocker: MockerFixture,
+-) -> None:
+-    """Verify that ``check_repo_exists`` works by using _resolve_ref_to_sha."""
+-    mock_resolve = mocker.patch("gitingest.utils.git_utils._resolve_ref_to_sha")
+-
+-    if git_command_succeeds:
+-        mock_resolve.return_value = "abc123def456"  # Mock SHA
+-    else:
+-        mock_resolve.side_effect = ValueError("Repository not found")
++async def test_check_repo_exists(status_code: int, *, expected: bool, mocker: MockerFixture) -> None:
++    """Verify that ``check_repo_exists`` interprets httpx results correctly."""
++    mock_client = AsyncMock()
++    mock_client.__aenter__.return_value = mock_client  # context-manager protocol
++    mock_client.head.return_value = httpx.Response(status_code=status_code)
++    mocker.patch("httpx.AsyncClient", return_value=mock_client)
+
+     result = await check_repo_exists(DEMO_URL)
+
+     assert result is expected
+-    mock_resolve.assert_called_once_with(DEMO_URL, "HEAD", token=None)
+
+
+ @pytest.mark.asyncio
+@@ -206,18 +202,19 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
+
+
+ @pytest.mark.asyncio
+-async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
+-    """Test ``check_repo_exists`` with authentication token.
++async def test_check_repo_exists_with_redirect(mocker: MockerFixture) -> None:
++    """Test ``check_repo_exists`` when a redirect (302) is returned.
+
+-    Given a GitHub URL and a token:
++    Given a URL that responds with "302 Found":
+     When ``check_repo_exists`` is called,
+-    Then it should pass the token to _resolve_ref_to_sha.
++    Then it should return ``False``, indicating the repo is inaccessible.
+     """
+-    mock_resolve = mocker.patch("gitingest.utils.git_utils._resolve_ref_to_sha")
+-    mock_resolve.return_value = "abc123def456"  # Mock SHA
++    mock_exec = mocker.patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
++    mock_process = AsyncMock()
++    mock_process.communicate.return_value = (b"302\n", b"")
++    mock_process.returncode = 0  # Simulate successful request
++    mock_exec.return_value = mock_process
+
+-    test_token = "token123"  # noqa: S105
+-    result = await check_repo_exists("https://github.com/test/repo", token=test_token)
++    repo_exists = await check_repo_exists(DEMO_URL)
+
+-    assert result is True
+-    mock_resolve.assert_called_once_with("https://github.com/test/repo", "HEAD", token=test_token)
++    assert repo_exists is False
