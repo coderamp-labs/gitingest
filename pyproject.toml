@@ -53,6 +53,8 @@ server = [
     "uvicorn>=0.11.7",  # Minimum safe release (https://osv.dev/vulnerability/PYSEC-2020-150)
 ]
 
+static = []
+
 [project.scripts]
 gitingest = "gitingest.__main__:main"
 
@@ -67,6 +69,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = {find = {where = ["src"]}}
 include-package-data = true
+
+[tool.setuptools.package-data]
+server = ["templates/**/*"]
+static = ["**/*"]
 
 # Linting configuration
 [tool.pylint.format]
