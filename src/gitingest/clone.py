@@ -5,16 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import git
+
 from gitingest.config import DEFAULT_TIMEOUT
 from gitingest.utils.git_utils import (
     check_repo_exists,
     checkout_partial_clone,
-    create_git_auth_header,
-    create_git_command,
+    create_git_repo,
     ensure_git_installed,
+    git_auth_context,
     is_github_host,
     resolve_commit,
-    run_command,
 )
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.os_utils import ensure_directory_exists_or_create
@@ -46,6 +47,8 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     ------
     ValueError
         If the repository is not found, if the provided URL is invalid, or if the token format is invalid.
+    RuntimeError
+        If Git operations fail during the cloning process.
 
     """
     # Extract and validate query parameters
@@ -83,20 +86,34 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     commit = await resolve_commit(config, token=token)
     logger.debug("Resolved commit", extra={"commit": commit})
 
-    clone_cmd = ["git"]
-    if token and is_github_host(url):
-        clone_cmd += ["-c", create_git_auth_header(token, url=url)]
+    # Clone the repository using GitPython with proper authentication
+    logger.info("Executing git clone operation", extra={"url": "<redacted>", "local_path": local_path})
+    try:
+        clone_kwargs = {
+            "single_branch": True,
+            "no_checkout": True,
+            "depth": 1,
+        }
 
-    clone_cmd += ["clone", "--single-branch", "--no-checkout", "--depth=1"]
-    if partial_clone:
-        clone_cmd += ["--filter=blob:none", "--sparse"]
+        with git_auth_context(url, token) as (git_cmd, auth_url):
+            if partial_clone:
+                # For partial clones, use git.Git() with filter and sparse options
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                cmd_args.extend(["--filter=blob:none", "--sparse"])
+                cmd_args.extend([auth_url, local_path])
+                git_cmd.clone(*cmd_args)
+            elif token and is_github_host(url):
+                # For authenticated GitHub repos, use git_cmd with auth URL
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1", auth_url, local_path]
+                git_cmd.clone(*cmd_args)
+            else:
+                # For non-authenticated repos, use the standard GitPython method
+                git.Repo.clone_from(url, local_path, **clone_kwargs)
 
-    clone_cmd += [url, local_path]
-
-    # Clone the repository
-    logger.info("Executing git clone command", extra={"command": " ".join([*clone_cmd[:-1], "<url>", local_path])})
-    await run_command(*clone_cmd)
-    logger.info("Git clone completed successfully")
+        logger.info("Git clone completed successfully")
+    except git.GitCommandError as exc:
+        msg = f"Git clone failed: {exc}"
+        raise RuntimeError(msg) from exc
 
     # Checkout the subpath if it is a partial clone
     if partial_clone:
@@ -104,20 +121,56 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
         await checkout_partial_clone(config, token=token)
         logger.debug("Partial clone setup completed")
 
-    git = create_git_command(["git"], local_path, url, token)
-
-    # Ensure the commit is locally available
-    logger.debug("Fetching specific commit", extra={"commit": commit})
-    await run_command(*git, "fetch", "--depth=1", "origin", commit)
-
-    # Write the work-tree at that commit
-    logger.info("Checking out commit", extra={"commit": commit})
-    await run_command(*git, "checkout", commit)
-
-    # Update submodules
-    if config.include_submodules:
-        logger.info("Updating submodules")
-        await run_command(*git, "submodule", "update", "--init", "--recursive", "--depth=1")
-        logger.debug("Submodules updated successfully")
+    # Perform post-clone operations
+    await _perform_post_clone_operations(config, local_path, url, token, commit)
 
     logger.info("Git clone operation completed successfully", extra={"local_path": local_path})
+
+
+async def _perform_post_clone_operations(
+    config: CloneConfig,
+    local_path: str,
+    url: str,
+    token: str | None,
+    commit: str,
+) -> None:
+    """Perform post-clone operations like fetching, checkout, and submodule updates.
+
+    Parameters
+    ----------
+    config : CloneConfig
+        The configuration for cloning the repository.
+    local_path : str
+        The local path where the repository was cloned.
+    url : str
+        The repository URL.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+    commit : str
+        The commit SHA to checkout.
+
+    Raises
+    ------
+    RuntimeError
+        If any Git operation fails.
+
+    """
+    try:
+        repo = create_git_repo(local_path, url, token)
+
+        # Ensure the commit is locally available
+        logger.debug("Fetching specific commit", extra={"commit": commit})
+        repo.git.fetch("--depth=1", "origin", commit)
+
+        # Write the work-tree at that commit
+        logger.info("Checking out commit", extra={"commit": commit})
+        repo.git.checkout(commit)
+
+        # Update submodules
+        if config.include_submodules:
+            logger.info("Updating submodules")
+            repo.git.submodule("update", "--init", "--recursive", "--depth=1")
+            logger.debug("Submodules updated successfully")
+    except git.GitCommandError as exc:
+        msg = f"Git operation failed: {exc}"
+        raise RuntimeError(msg) from exc

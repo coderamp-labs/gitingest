@@ -6,12 +6,12 @@ import asyncio
 import base64
 import re
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Iterable
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Final, Generator, Iterable
+from urllib.parse import urlparse, urlunparse
 
-import httpx
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+import git
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
@@ -49,6 +49,9 @@ def is_github_host(url: str) -> bool:
 
 async def run_command(*args: str) -> tuple[bytes, bytes]:
     """Execute a shell command asynchronously and return (stdout, stderr) bytes.
+
+    This function is kept for backward compatibility with non-git commands.
+    Git operations should use GitPython directly.
 
     Parameters
     ----------
@@ -92,21 +95,27 @@ async def ensure_git_installed() -> None:
 
     """
     try:
-        await run_command("git", "--version")
-    except RuntimeError as exc:
+        # Use GitPython to check git availability
+        git_cmd = git.Git()
+        git_cmd.version()
+    except git.GitCommandError as exc:
         msg = "Git is not installed or not accessible. Please install Git first."
         raise RuntimeError(msg) from exc
+    except Exception as exc:
+        msg = "Git is not installed or not accessible. Please install Git first."
+        raise RuntimeError(msg) from exc
+
     if sys.platform == "win32":
         try:
-            stdout, _ = await run_command("git", "config", "core.longpaths")
-            if stdout.decode().strip().lower() != "true":
+            longpaths_value = git_cmd.config("core.longpaths")
+            if longpaths_value.lower() != "true":
                 logger.warning(
                     "Git clone may fail on Windows due to long file paths. "
                     "Consider enabling long path support with: 'git config --global core.longpaths true'. "
                     "Note: This command may require administrator privileges.",
                     extra={"platform": "windows", "longpaths_enabled": False},
                 )
-        except RuntimeError:
+        except git.GitCommandError:
             # Ignore if checking 'core.longpaths' fails.
             pass
 
@@ -126,35 +135,15 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
     bool
         ``True`` if the repository exists, ``False`` otherwise.
 
-    Raises
-    ------
-    RuntimeError
-        If the host returns an unrecognised status code.
-
     """
-    headers = {}
-
-    if token and is_github_host(url):
-        host, owner, repo = _parse_github_url(url)
-        # Public GitHub vs. GitHub Enterprise
-        base_api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
-        url = f"{base_api}/repos/{owner}/{repo}"
-        headers["Authorization"] = f"Bearer {token}"
-
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            response = await client.head(url, headers=headers)
-        except httpx.RequestError:
-            return False
-
-    status_code = response.status_code
-
-    if status_code == HTTP_200_OK:
-        return True
-    if status_code in {HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND}:
+    try:
+        # Try to resolve HEAD - if repo exists, this will work
+        await _resolve_ref_to_sha(url, "HEAD", token=token)
+    except (ValueError, Exception):
+        # Repository doesn't exist, is private without proper auth, or other error
         return False
-    msg = f"Unexpected HTTP status {status_code} for {url}"
-    raise RuntimeError(msg)
+
+    return True
 
 
 def _parse_github_url(url: str) -> tuple[str, str, str]:
@@ -216,52 +205,51 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
     ------
     ValueError
         If the ``ref_type`` parameter is not "branches" or "tags".
+    RuntimeError
+        If fetching branches or tags from the remote repository fails.
 
     """
     if ref_type not in ("branches", "tags"):
         msg = f"Invalid fetch type: {ref_type}"
         raise ValueError(msg)
 
-    cmd = ["git"]
-
-    # Add authentication if needed
-    if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
-
-    cmd += ["ls-remote"]
-
-    fetch_tags = ref_type == "tags"
-    to_fetch = "tags" if fetch_tags else "heads"
-
-    cmd += [f"--{to_fetch}"]
-
-    # `--refs` filters out the peeled tag objects (those ending with "^{}") (for tags)
-    if fetch_tags:
-        cmd += ["--refs"]
-
-    cmd += [url]
-
     await ensure_git_installed()
-    stdout, _ = await run_command(*cmd)
-    # For each line in the output:
-    # - Skip empty lines and lines that don't contain "refs/{to_fetch}/"
-    # - Extract the branch or tag name after "refs/{to_fetch}/"
-    return [
-        line.split(f"refs/{to_fetch}/", 1)[1]
-        for line in stdout.decode().splitlines()
-        if line.strip() and f"refs/{to_fetch}/" in line
-    ]
+
+    # Use GitPython to get remote references
+    try:
+        fetch_tags = ref_type == "tags"
+        to_fetch = "tags" if fetch_tags else "heads"
+
+        # Build ls-remote command
+        cmd_args = [f"--{to_fetch}"]
+        if fetch_tags:
+            cmd_args.append("--refs")  # Filter out peeled tag objects
+        cmd_args.append(url)
+
+        # Run the command with proper authentication
+        with git_auth_context(url, token) as (git_cmd, auth_url):
+            # Replace the URL in cmd_args with the authenticated URL
+            cmd_args[-1] = auth_url  # URL is the last argument
+            output = git_cmd.ls_remote(*cmd_args)
+
+        # Parse output
+        return [
+            line.split(f"refs/{to_fetch}/", 1)[1]
+            for line in output.splitlines()
+            if line.strip() and f"refs/{to_fetch}/" in line
+        ]
+    except git.GitCommandError as exc:
+        msg = f"Failed to fetch {ref_type} from {url}: {exc}"
+        raise RuntimeError(msg) from exc
 
 
-def create_git_command(base_cmd: list[str], local_path: str, url: str, token: str | None = None) -> list[str]:
-    """Create a git command with authentication if needed.
+def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.Repo:
+    """Create a GitPython Repo object with authentication if needed.
 
     Parameters
     ----------
-    base_cmd : list[str]
-        The base git command to start with.
     local_path : str
-        The local path where the git command should be executed.
+        The local path where the git repository is located.
     url : str
         The repository URL to check if it's a GitHub repository.
     token : str | None
@@ -269,14 +257,30 @@ def create_git_command(base_cmd: list[str], local_path: str, url: str, token: st
 
     Returns
     -------
-    list[str]
-        The git command with authentication if needed.
+    git.Repo
+        A GitPython Repo object configured with authentication.
+
+    Raises
+    ------
+    ValueError
+        If the local path is not a valid git repository.
 
     """
-    cmd = [*base_cmd, "-C", local_path]
-    if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
-    return cmd
+    try:
+        repo = git.Repo(local_path)
+
+        # Configure authentication if needed
+        if token and is_github_host(url):
+            auth_header = create_git_auth_header(token, url=url)
+            # Set the auth header in git config for this repo
+            key, value = auth_header.split("=", 1)
+            repo.git.config(key, value)
+
+    except git.InvalidGitRepositoryError as exc:
+        msg = f"Invalid git repository at {local_path}"
+        raise ValueError(msg) from exc
+
+    return repo
 
 
 def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
@@ -310,6 +314,70 @@ def create_git_auth_header(token: str, url: str = "https://github.com") -> str:
     return f"http.https://{hostname}/.extraheader=Authorization: Basic {basic}"
 
 
+def create_authenticated_url(url: str, token: str | None = None) -> str:
+    """Create an authenticated URL for Git operations.
+
+    This is the safest approach for multi-user environments - no global state.
+
+    Parameters
+    ----------
+    url : str
+        The repository URL.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Returns
+    -------
+    str
+        The URL with authentication embedded (for GitHub) or original URL.
+
+    """
+    if not (token and is_github_host(url)):
+        return url
+
+    parsed = urlparse(url)
+    # Add token as username in URL (GitHub supports this)
+    netloc = f"x-oauth-basic:{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )
+
+
+@contextmanager
+def git_auth_context(url: str, token: str | None = None) -> Generator[tuple[git.Git, str]]:
+    """Context manager that provides Git command and authenticated URL.
+
+    Returns both a Git command object and the authenticated URL to use.
+    This avoids any global state contamination between users.
+
+    Parameters
+    ----------
+    url : str
+        The repository URL to check if authentication is needed.
+    token : str | None
+        GitHub personal access token (PAT) for accessing private repositories.
+
+    Yields
+    ------
+    Generator[tuple[git.Git, str]]
+        Tuple of (Git command object, authenticated URL to use).
+
+    """
+    git_cmd = git.Git()
+    auth_url = create_authenticated_url(url, token)
+    yield git_cmd, auth_url
+
+
 def validate_github_token(token: str) -> None:
     """Validate the format of a GitHub Personal Access Token.
 
@@ -338,13 +406,23 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
 
+    Raises
+    ------
+    RuntimeError
+        If the sparse-checkout configuration fails.
+
     """
     subpath = config.subpath.lstrip("/")
     if config.blob:
         # Remove the file name from the subpath when ingesting from a file url (e.g. blob/branch/path/file.txt)
         subpath = str(Path(subpath).parent.as_posix())
-    checkout_cmd = create_git_command(["git"], config.local_path, config.url, token)
-    await run_command(*checkout_cmd, "sparse-checkout", "set", subpath)
+
+    try:
+        repo = create_git_repo(config.local_path, config.url, token)
+        repo.git.sparse_checkout("set", subpath)
+    except git.GitCommandError as exc:
+        msg = f"Failed to configure sparse-checkout: {exc}"
+        raise RuntimeError(msg) from exc
 
 
 async def resolve_commit(config: CloneConfig, token: str | None) -> str:
@@ -400,18 +478,20 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
         If the ref does not exist in the remote repository.
 
     """
-    # Build: git [-c http.<host>/.extraheader=Auth...] ls-remote <url> <pattern>
-    cmd: list[str] = ["git"]
-    if token and is_github_host(url):
-        cmd += ["-c", create_git_auth_header(token, url=url)]
+    try:
+        # Execute ls-remote command with proper authentication
+        with git_auth_context(url, token) as (git_cmd, auth_url):
+            output = git_cmd.ls_remote(auth_url, pattern)
+        lines = output.splitlines()
 
-    cmd += ["ls-remote", url, pattern]
-    stdout, _ = await run_command(*cmd)
-    lines = stdout.decode().splitlines()
-    sha = _pick_commit_sha(lines)
-    if not sha:
-        msg = f"{pattern!r} not found in {url}"
-        raise ValueError(msg)
+        sha = _pick_commit_sha(lines)
+        if not sha:
+            msg = f"{pattern!r} not found in {url}"
+            raise ValueError(msg)
+
+    except git.GitCommandError as exc:
+        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
+        raise ValueError(msg) from exc
 
     return sha
 

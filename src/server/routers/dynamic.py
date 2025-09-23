@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from server.server_config import templates
+from server.server_config import get_version_info, templates
 
 router = APIRouter()
 
@@ -29,13 +29,16 @@ async def catch_all(request: Request, full_path: str) -> HTMLResponse:
         and other default parameters such as file size.
 
     """
+    # Block API routes
     if full_path.startswith("api/"):
         raise HTTPException(status_code=405, detail="Method Not Allowed")
-    return templates.TemplateResponse(
-        "git.jinja",
-        {
-            "request": request,
-            "repo_url": full_path,
-            "default_max_file_size": 243,
-        },
-    )
+    
+    # Build context with version info
+    context = {
+        "request": request,
+        "repo_url": full_path,
+        "default_max_file_size": 243,
+    }
+    context.update(get_version_info())
+
+    return templates.TemplateResponse("git.jinja", context)

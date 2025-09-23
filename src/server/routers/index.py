@@ -1,7 +1,6 @@
 """Module defining the FastAPI router for the home page of the application."""
 
 from fastapi import APIRouter, Depends, Request, Form, HTTPException
-
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from autotiktokenizer import AutoTikTokenizer
@@ -11,13 +10,11 @@ from typing import Optional
 from gitingest.utils.compat_typing import Annotated
 from server.models import QueryForm
 from server.query_processor import process_query
-from server.server_config import EXAMPLE_REPOS, templates
+from server.server_config import EXAMPLE_REPOS, get_version_info, templates
 from server.server_utils import limiter
 from pydantic import BaseModel, Field
 
-
 router = APIRouter()
-
 templates = Jinja2Templates(directory="server/templates")
 
 SUPPORTED_MODELS = {
@@ -48,14 +45,12 @@ SUPPORTED_MODELS = {
     'BERT-base-uncased': 'bert-base-uncased',
     'T5-base': 't5-base',
 }
-# Note: Gemini and Claude use approximate tokenizers (T5 and GPT-2, respectively) as no official public tokenizers exist for these models.
 
 def get_tokenizer(model_id):
     return AutoTikTokenizer.from_pretrained(model_id)
 
 def count_tokens(input_text, model_id):
     if model_id == 'openai-community/gpt2':
-        # Use tiktoken for OpenAI models
         enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
         return len(enc.encode(input_text))
     else:
@@ -64,56 +59,18 @@ def count_tokens(input_text, model_id):
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home(request: Request) -> HTMLResponse:
-    """Render the home page with example repositories and default parameters.
-
-    This endpoint serves the home page of the application, rendering the ``index.jinja`` template
-    and providing it with a list of example repositories and default file size values.
-
-    Parameters
-    ----------
-    request : Request
-        The incoming request object, which provides context for rendering the response.
-
-    Returns
-    -------
-    HTMLResponse
-        An HTML response containing the rendered home page template, with example repositories
-        and other default parameters such as file size.
-
-    """
-    return templates.TemplateResponse(
-        "index.jinja",
-        {
-            "request": request,
-            "examples": EXAMPLE_REPOS,
-            "default_max_file_size": 243,
-        },
-    )
-
+    """Render the home page with example repositories and default parameters."""
+    context = {
+        "request": request,
+        "examples": EXAMPLE_REPOS,
+        "default_max_file_size": 243,
+    }
+    context.update(get_version_info())
+    return templates.TemplateResponse("index.jinja", context)
 
 @router.post("/", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def index_post(request: Request, form: Annotated[QueryForm, Depends(QueryForm.as_form)]) -> HTMLResponse:
-    """Process the form submission with user input for query parameters.
-
-    This endpoint handles POST requests from the home page form. It processes the user-submitted
-    input (e.g., text, file size, pattern type) and invokes the ``process_query`` function to handle
-    the query logic, returning the result as an HTML response.
-
-    Parameters
-    ----------
-    request : Request
-        The incoming request object, which provides context for rendering the response.
-    form : Annotated[QueryForm, Depends(QueryForm.as_form)]
-        The form data submitted by the user.
-
-    Returns
-    -------
-    HTMLResponse
-        An HTML response containing the results of processing the form input and query logic,
-        which will be rendered and returned to the user.
-
-    """
     resolved_token = form.token if form.token else None
     return await process_query(
         request,
@@ -124,7 +81,6 @@ async def index_post(request: Request, form: Annotated[QueryForm, Depends(QueryF
         is_index=True,
         token=resolved_token,
     )
-
 
 class TokenCountRequest(BaseModel):
     input_text: str = Field(..., description="The text to count tokens for")
@@ -141,15 +97,9 @@ async def api_token_count(
     input_text: str = Form(None),
     model_id: str = Form(default="openai-community/gpt2"),
 ):
-    """
-    Count tokens in the provided text using the specified model's tokenizer.
-    Accepts both JSON and form data.
-    """
-    # If JSON body was provided, use that
     if request:
         text = request.input_text
         model = request.model_id
-    # Otherwise use form data
     else:
         text = input_text
         model = model_id
