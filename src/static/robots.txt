@@ -1,4 +1,2 @@
 User-agent: *
-Allow: /
-Allow: /api/
-Allow: /coderamp-labs/gitingest/
+Disallow:
