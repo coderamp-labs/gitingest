@@ -115,8 +115,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate
 pip install -e .
 gitingest --help
-
-### Example
+# Example
 gitingest https://github.com/user/repo -o digest.txt
 ```
 
