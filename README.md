@@ -107,6 +107,20 @@ The extension is open source at [lcandy2/gitingest-extension](https://github.com
 
 Issues and feature requests are welcome to the repo.
 
+# Windows venv activation and correct usage:
+
+## Quick start (Windows / PowerShell)<br>
+```bash
+python -m venv .venv
+.\.venv\Scripts\Activate
+pip install -e .
+gitingest --help
+
+### Example
+gitingest https://github.com/user/repo -o digest.txt
+```
+
+
 ## 💡 Command line usage
 
 The `gitingest` command line tool allows you to analyze codebases and create a text dump of their contents.
