@@ -48,6 +48,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
     file_count: int = 0
     dir_count: int = 0
     depth: int = 0
+    token_count: int = 0
     children: list[FileSystemNode] = field(default_factory=list)
 
     def sort_children(self) -> None:
