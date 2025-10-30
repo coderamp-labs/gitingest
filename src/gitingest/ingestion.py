@@ -13,6 +13,7 @@ from gitingest.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from gitingest.schemas import IngestionQuery
+    from server.models import UploadedFile
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -118,6 +119,79 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
     )
 
     return format_node(root_node, query=query)
+
+
+def ingest_uploaded_files(
+    files: list[UploadedFile],
+    max_file_size: int,
+    ignore_patterns: list[str] | None = None,
+    include_patterns: list[str] | None = None,
+) -> tuple[str, str, str]:
+    """Run the ingestion process for a list of uploaded files."""
+    root_node = FileSystemNode(
+        name="root",
+        type=FileSystemNodeType.DIRECTORY,
+        path_str="",
+        path=Path(""),
+    )
+
+    stats = FileSystemStats()
+
+    for file in files:
+        if limit_exceeded(stats, depth=0):
+            break
+
+        path = Path(file.webkitRelativePath)
+
+        if ignore_patterns and _should_exclude(path, Path(""), ignore_patterns):
+            continue
+
+        if include_patterns and not _should_include(path, Path(""), include_patterns):
+            continue
+
+        file_size = len(file.content)
+        if file_size > max_file_size:
+            continue
+
+        if stats.total_files + 1 > MAX_FILES:
+            break
+
+        if stats.total_size + file_size > MAX_TOTAL_SIZE_BYTES:
+            break
+
+        stats.total_files += 1
+        stats.total_size += file_size
+
+        # Create nested structure
+        parts = path.parts
+        current_node = root_node
+        for i, part in enumerate(parts):
+            is_file = (i == len(parts) - 1)
+            child_node = next((c for c in current_node.children if c.name == part), None)
+            if not child_node:
+                if is_file:
+                    child_node = FileSystemNode(
+                        name=part,
+                        type=FileSystemNodeType.FILE,
+                        size=file_size,
+                        file_count=1,
+                        path_str=str(path),
+                        path=path,
+                        depth=i + 1,
+                        content=file.content
+                    )
+                else:
+                    child_node = FileSystemNode(
+                        name=part,
+                        type=FileSystemNodeType.DIRECTORY,
+                        path_str=str(Path(*parts[:i+1])),
+                        path=Path(*parts[:i+1]),
+                        depth=i + 1,
+                    )
+                current_node.children.append(child_node)
+            current_node = child_node
+
+    return format_node(root_node)
 
 
 def _process_node(node: FileSystemNode, query: IngestionQuery, stats: FileSystemStats) -> None:

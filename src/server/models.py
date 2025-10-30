@@ -196,3 +196,17 @@ class QueryForm(BaseModel):
             pattern=pattern,
             token=token,
         )
+
+
+class UploadedFile(BaseModel):
+    """Represents a single file uploaded by the user."""
+    name: str
+    content: str
+    webkitRelativePath: str
+
+class UploadRequest(BaseModel):
+    """Request model for the /api/upload endpoint."""
+    files: list[UploadedFile]
+    max_file_size: int = Field(..., ge=1, le=MAX_FILE_SIZE_KB, description="File size in KB")
+    pattern_type: PatternType = Field(default=PatternType.EXCLUDE, description="Pattern type for file filtering")
+    pattern: str = Field(default="", description="Glob/regex pattern for file filtering")

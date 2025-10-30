@@ -8,9 +8,10 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from prometheus_client import Counter
 
 from gitingest.config import TMP_BASE_PATH
-from server.models import IngestRequest
+from server.models import IngestRequest, UploadRequest, PatternType, IngestErrorResponse
 from server.routers_utils import COMMON_INGEST_RESPONSES, _perform_ingestion
 from server.s3_utils import is_s3_enabled
+from server.query_processor import process_uploaded_folder
 from server.server_config import DEFAULT_FILE_SIZE_KB
 from server.server_utils import limiter
 
@@ -50,6 +51,24 @@ async def api_ingest(
     # limit URL to 255 characters
     ingest_counter.labels(status=response.status_code, url=ingest_request.input_text[:255]).inc()
     return response
+
+
+@router.post("/api/upload", responses=COMMON_INGEST_RESPONSES)
+@limiter.limit("10/minute")
+async def api_upload(
+    request: Request,
+    upload_request: UploadRequest,
+) -> JSONResponse:
+    """Ingest a folder of files and return processed content."""
+    result = await process_uploaded_folder(
+        files=upload_request.files,
+        max_file_size=upload_request.max_file_size,
+        pattern_type=PatternType(upload_request.pattern_type),
+        pattern=upload_request.pattern,
+    )
+    if isinstance(result, IngestErrorResponse):
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=result.model_dump())
+    return JSONResponse(status_code=status.HTTP_200_OK, content=result.model_dump())
 
 
 @router.get("/api/{user}/{repository}", responses=COMMON_INGEST_RESPONSES)

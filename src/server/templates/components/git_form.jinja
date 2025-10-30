@@ -26,6 +26,15 @@
                         Ingest
                     </button>
                 </div>
+                <!-- Upload Folder button -->
+                <div class="relative w-auto flex-shrink-0 h-full group">
+                    <div class="w-full h-full rounded bg-gray-800 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                    <button type="button"
+                            id="uploadFolderBtn"
+                            class="py-3.5 rounded px-6 group-hover:-translate-y-px group-hover:-translate-x-px ease-out duration-300 z-20 relative w-full border-[3px] border-gray-900 font-medium bg-[#ffc480] tracking-wide text-lg flex-shrink-0 text-gray-900">
+                        Upload Folder
+                    </button>
+                </div>
             </div>
             <!-- Hidden fields -->
             <input type="hidden" name="pattern_type" value="exclude">
@@ -177,3 +186,4 @@
 </div>
 <script defer src="/static/js/git.js"></script>
 <script defer src="/static/js/git_form.js"></script>
+<script defer src="/static/js/upload_form.js"></script>

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from gitingest.clone import clone_repo
-from gitingest.ingestion import ingest_query
+from gitingest.ingestion import ingest_query, ingest_uploaded_files
 from gitingest.query_parser import parse_remote_repo
 from gitingest.utils.git_utils import resolve_commit, validate_github_token
 from gitingest.utils.logging_config import get_logger
@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from gitingest.schemas.cloning import CloneConfig
     from gitingest.schemas.ingestion import IngestionQuery
+    from server.models import UploadedFile
 
 
 def _cleanup_repository(clone_config: CloneConfig) -> None:
@@ -340,6 +341,47 @@ async def process_query(
         pattern_type=pattern_type,
         pattern=pattern,
     )
+
+
+async def process_uploaded_folder(
+    files: list[UploadedFile],
+    max_file_size: int,
+    pattern_type: PatternType,
+    pattern: str,
+) -> IngestResponse:
+    """Process a folder of uploaded files and generate a summary."""
+    try:
+        ignore_patterns, include_patterns = process_patterns(
+            exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,
+            include_patterns=pattern if pattern_type == PatternType.INCLUDE else None,
+        )
+
+        summary, tree, content = ingest_uploaded_files(
+            files=files,
+            max_file_size=max_file_size * 1024,  # Convert KB to bytes
+            ignore_patterns=ignore_patterns,
+            include_patterns=include_patterns,
+        )
+
+        if len(content) > MAX_DISPLAY_SIZE:
+            content = (
+                f"(Files content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
+                "download full ingest to see more)\n" + content[:MAX_DISPLAY_SIZE]
+            )
+
+        return IngestSuccessResponse(
+            repo_url="Uploaded Folder",
+            short_repo_url="Uploaded Folder",
+            summary=summary,
+            digest_url="",  # No download URL for uploaded folders yet
+            tree=tree,
+            content=content,
+            default_max_file_size=max_file_size,
+            pattern_type=pattern_type.value,
+            pattern=pattern,
+        )
+    except Exception as exc:
+        return IngestErrorResponse(error=f"{exc!s}")
 
 
 def _print_query(url: str, max_file_size: int, pattern_type: str, pattern: str) -> None:
