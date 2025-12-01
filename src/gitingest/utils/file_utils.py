@@ -27,7 +27,7 @@ def _get_preferred_encodings() -> list[str]:
         platform's default encoding followed by common fallback encodings.
 
     """
-    encodings = [locale.getpreferredencoding(), "utf-8", "utf-16", "utf-16le", "utf-8-sig", "latin"]
+    encodings = ["utf-8", locale.getpreferredencoding(), "utf-16", "utf-16le", "utf-8-sig", "latin"]
     if platform.system() == "Windows":
         encodings += ["cp1252", "iso-8859-1"]
     return list(dict.fromkeys(encodings))
