@@ -150,6 +150,18 @@ See more options and usage details with:
 gitingest --help
 ```
 
+### Extracting files from a digest
+
+You can also reconstruct the source files from a digest using the `extract` command:
+
+```bash
+# Extract files from digest.txt to the current directory
+gitingest extract digest.txt
+
+# Extract files to a specific output directory
+gitingest extract digest.txt --output ./restored-project
+```
+
 ## 🐍 Python package usage
 
 ```python

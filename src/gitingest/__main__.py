@@ -161,6 +161,14 @@ def extract_command(digest_file: str, output: str) -> None:
     output : str
         Directory where extracted files will be saved.
 
+    Examples
+    --------
+    Extract files from digest.txt to the current directory:
+        $ gitingest extract digest.txt
+
+    Extract files to a specific output directory:
+        $ gitingest extract digest.txt --output ./restored-project
+
     """
     try:
         extract(digest_file, output)
