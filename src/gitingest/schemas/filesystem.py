@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SEPARATOR = "=" * 48  # Tiktoken, the tokenizer openai uses, counts 2 tokens if we have more than 48
-
+EMPTY_FILE = "[Empty file]"
 
 class FileSystemNodeType(Enum):
     """Enum representing the type of a file system node (directory or file)."""
@@ -140,7 +140,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
             return "Error reading file"
 
         if chunk == b"":
-            return "[Empty file]"
+            return EMPTY_FILE
 
         if not _decodes(chunk, "utf-8"):
             return "[Binary file]"

@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from gitingest.schemas.filesystem import SEPARATOR
+from gitingest.schemas.filesystem import EMPTY_FILE, SEPARATOR
 from gitingest.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -103,6 +103,8 @@ def extract(digest_path: str | Path, output_dir: str | Path = ".") -> None:
             target_file_path.parent.mkdir(parents=True, exist_ok=True)
 
             try:
+                if file_content == EMPTY_FILE:
+                    file_content = ""
                 with target_file_path.open("w", encoding="utf-8") as f:
                     f.write(file_content)
                 logger.debug(f"Extracted: {target_file_path}")

@@ -70,7 +70,7 @@ def test_extract_empty_file(tmp_path: Path) -> None:
 
     extracted_file = output_dir / "empty.txt"
     assert extracted_file.exists()
-    assert extracted_file.read_text(encoding="utf-8") == "[Empty file]"
+    assert extracted_file.read_text(encoding="utf-8") == ""
 
 
 def test_extract_binary_file_placeholder(tmp_path: Path) -> None:
