@@ -90,6 +90,34 @@ def test_cli_with_stdout_output() -> None:
             output_file.unlink()
 
 
+def test_cli_extract_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test the extract command."""
+    monkeypatch.chdir(tmp_path)
+
+    # Create a dummy digest file
+    digest_content = (
+        "Directory structure:\n"
+        "└── test_file.py\n\n"
+        "================================================\n"
+        "FILE: test_file.py\n"
+        "================================================\n"
+        "print('hello world')\n\n\n"
+    )
+    digest_file = tmp_path / "digest.txt"
+    digest_file.write_text(digest_content, encoding="utf-8")
+
+    # Run extract
+    result = _invoke_isolated_cli_runner(["extract", str(digest_file), "-o", "."])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Successfully extracted files" in result.stdout
+
+    # Check if file was extracted
+    extracted_file = tmp_path / "test_file.py"
+    assert extracted_file.exists()
+    assert extracted_file.read_text(encoding="utf-8") == "print('hello world')"
+
+
 def _invoke_isolated_cli_runner(args: list[str]) -> Result:
     """Return a ``CliRunner`` that keeps ``stderr`` separate on Click 8.0-8.1."""
     kwargs = {}

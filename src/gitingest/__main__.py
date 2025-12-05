@@ -11,6 +11,7 @@ from typing_extensions import Unpack
 
 from gitingest.config import MAX_FILE_SIZE, OUTPUT_FILE_NAME
 from gitingest.entrypoint import ingest_async
+from gitingest.extract import extract
 
 # Import logging configuration first to intercept all logging
 from gitingest.utils.logging_config import get_logger
@@ -31,7 +32,34 @@ class _CLIArgs(TypedDict):
     output: str | None
 
 
-@click.command()
+class DefaultGroup(click.Group):
+    """A Click Group that invokes a default command if a subcommand is not found."""
+
+    def parse_args(self, ctx, args):
+        if args and args[0] in ["--help", "-h"]:
+            return super().parse_args(ctx, args)
+
+        if not args or args[0] not in self.commands:
+            # Default to ingest command
+            # Insert "ingest" as the first argument
+            args = ["ingest"] + args
+        
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=DefaultGroup)
+def main() -> None:
+    """Gitingest CLI tool.
+
+    The default command is 'ingest', which analyzes a directory or repository.
+    Use 'gitingest ingest --help' to see options for the default command.
+    
+    To extract files from a digest, use 'gitingest extract'.
+    """
+    pass
+
+
+@main.command(name="ingest")
 @click.argument("source", type=str, default=".")
 @click.option(
     "--max-size",
@@ -76,7 +104,7 @@ class _CLIArgs(TypedDict):
     default=None,
     help="Output file path (default: digest.txt in current directory). Use '-' for stdout.",
 )
-def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
+def ingest_command(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     """Run the CLI entry point to analyze a repo / directory and dump its contents.
 
     Parameters
@@ -112,6 +140,34 @@ def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
 
     """
     asyncio.run(_async_main(**cli_kwargs))
+
+
+@main.command(name="extract")
+@click.argument("digest_file", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--output",
+    "-o",
+    default=".",
+    type=click.Path(file_okay=False, dir_okay=True),
+    help="Output directory where files will be extracted.",
+)
+def extract_command(digest_file: str, output: str) -> None:
+    """Extract files from a gitingest digest file.
+
+    Parameters
+    ----------
+    digest_file : str
+        Path to the digest file.
+    output : str
+        Directory where extracted files will be saved.
+
+    """
+    try:
+        extract(digest_file, output)
+        click.echo(f"Successfully extracted files to '{output}'")
+    except Exception as exc:
+        click.echo(f"Error extracting files: {exc}", err=True)
+        raise click.Abort from exc
 
 
 async def _async_main(
