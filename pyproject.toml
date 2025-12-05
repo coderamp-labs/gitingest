@@ -8,6 +8,7 @@ dependencies = [
     "click>=8.0.0",
     "gitpython>=3.1.0",
     "httpx",
+    "jupytext>=1.16.0",
     "loguru>=0.7.0",
     "pathspec>=0.12.1",
     "pydantic",

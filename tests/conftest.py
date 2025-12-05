@@ -150,6 +150,40 @@ def write_notebook(tmp_path: Path) -> WriteNotebookFunc:
     """
 
     def _write_notebook(name: str, content: dict[str, Any]) -> Path:
+        # Add minimal required fields for valid notebook v4
+        if "nbformat" not in content:
+            content["nbformat"] = 4
+        if "nbformat_minor" not in content:
+            content["nbformat_minor"] = 5
+        if "metadata" not in content:
+            content["metadata"] = {
+                "kernelspec": {
+                    "display_name": "Python 3",
+                    "language": "python",
+                    "name": "python3",
+                },
+                "language_info": {
+                    "codemirror_mode": {"name": "ipython", "version": 3},
+                    "file_extension": ".py",
+                    "mimetype": "text/x-python",
+                    "name": "python",
+                    "nbconvert_exporter": "python",
+                    "pygments_lexer": "ipython3",
+                    "version": "3.8.0",
+                },
+            }
+        
+        # Ensure cells have required fields
+        if "cells" in content:
+            for cell in content["cells"]:
+                if "metadata" not in cell:
+                    cell["metadata"] = {}
+                if cell["cell_type"] == "code":
+                    if "outputs" not in cell:
+                        cell["outputs"] = []
+                    if "execution_count" not in cell:
+                        cell["execution_count"] = None
+
         notebook_path = tmp_path / name
         with notebook_path.open(mode="w", encoding="utf-8") as f:
             json.dump(content, f)
