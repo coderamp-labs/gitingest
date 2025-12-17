@@ -63,6 +63,7 @@ def generate_s3_file_path(
     repo_name: str,
     commit: str,
     subpath: str,
+    include_submodules: bool,
     include_patterns: set[str] | None,
     ignore_patterns: set[str],
 ) -> str:
@@ -92,6 +93,8 @@ def generate_s3_file_path(
         Set of patterns specifying which files to include.
     ignore_patterns : set[str]
         Set of patterns specifying which files to exclude.
+    include_submodules : bool
+        Whether to recursively clone and include Git submodules.
 
     Returns
     -------
@@ -111,7 +114,8 @@ def generate_s3_file_path(
         raise ValueError(msg)
 
     # Create hash of exclude/include patterns for uniqueness
-    patterns_str = f"include:{sorted(include_patterns) if include_patterns else []}"
+    patterns_str = f"submodules:{int(include_submodules)}"
+    patterns_str += f"include:{sorted(include_patterns) if include_patterns else []}"
     patterns_str += f"exclude:{sorted(ignore_patterns)}"
     patterns_hash = hashlib.sha256(patterns_str.encode()).hexdigest()[:16]
     subpath_hash = hashlib.sha256(subpath.encode()).hexdigest()[:16]

@@ -27,6 +27,59 @@ if TYPE_CHECKING:
 # Initialize logger for this module
 logger = get_logger(__name__)
 
+_ASKPASS_SCRIPT_NAME = "gitingest-askpass.sh"
+
+
+def _write_git_askpass_script(repo_path: Path) -> Path:
+    """Write a small askpass helper into ``.git`` that reads the token from env.
+
+    The script never embeds secrets; it prints the username and reads the token from
+    ``GITINGEST_GIT_PASSWORD``.
+    """
+    git_dir = repo_path / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+
+    askpass_path = git_dir / _ASKPASS_SCRIPT_NAME
+    askpass_path.write_text(
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        '  Username*) echo "x-access-token" ;;\n'
+        '  Password*) echo "${GITINGEST_GIT_PASSWORD:-}" ;;\n'
+        '  *) echo "" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    try:
+        askpass_path.chmod(0o700)
+    except OSError:
+        # Best-effort on platforms where chmod may be unsupported.
+        pass
+    return askpass_path
+
+
+def _configure_submodule_auth(repo: git.Repo, *, token: str | None, url: str, local_path: str) -> None:
+    """Disable interactive prompts and provide an askpass hook for private submodules."""
+    try:
+        repo.git.update_environment(GIT_TERMINAL_PROMPT="0")
+    except Exception:
+        # Best-effort: if the GitPython object doesn't support env updates, continue.
+        return
+
+    if not (token and is_github_host(url)):
+        return
+
+    try:
+        askpass_path = _write_git_askpass_script(Path(local_path))
+    except OSError:
+        logger.exception("Failed to write GIT_ASKPASS helper", extra={"local_path": local_path})
+        return
+
+    repo.git.update_environment(
+        GIT_ASKPASS=str(askpass_path),
+        GIT_TERMINAL_PROMPT="0",
+        GITINGEST_GIT_PASSWORD=token,
+    )
+
 
 @async_timeout(DEFAULT_TIMEOUT)
 async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
@@ -169,6 +222,7 @@ async def _perform_post_clone_operations(
         # Update submodules
         if config.include_submodules:
             logger.info("Updating submodules")
+            _configure_submodule_auth(repo, token=token, url=url, local_path=local_path)
             repo.git.submodule("update", "--init", "--recursive", "--depth=1")
             logger.debug("Submodules updated successfully")
     except git.GitCommandError as exc:

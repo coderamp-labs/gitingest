@@ -29,6 +29,8 @@ class IngestRequest(BaseModel):
     ----------
     input_text : str
         The Git repository URL or slug to ingest.
+    include_submodules : bool
+        If ``True``, recursively clone and include Git submodules (default: ``False``).
     max_file_size : int
         Maximum file size slider position (0-500) for filtering files.
     pattern_type : PatternType
@@ -41,6 +43,7 @@ class IngestRequest(BaseModel):
     """
 
     input_text: str = Field(..., description="Git repository URL or slug to ingest")
+    include_submodules: bool = Field(default=False, description="Recursively clone and include Git submodules")
     max_file_size: int = Field(..., ge=1, le=MAX_FILE_SIZE_KB, description="File size in KB")
     pattern_type: PatternType = Field(default=PatternType.EXCLUDE, description="Pattern type for file filtering")
     pattern: str = Field(default="", description="Glob/regex pattern for file filtering")
