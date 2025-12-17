@@ -126,12 +126,14 @@ function collectFormData(form) {
     const json_data = {};
     const inputText = form.querySelector('[name="input_text"]');
     const token = form.querySelector('[name="token"]');
+    const includeSubmodules = form.querySelector('[name="include_submodules"]');
     const hiddenInput = document.getElementById('max_file_size_kb');
     const patternType = document.getElementById('pattern_type');
     const pattern = document.getElementById('pattern');
 
     if (inputText) {json_data.input_text = inputText.value;}
     if (token) {json_data.token = token.value;}
+    if (includeSubmodules) {json_data.include_submodules = includeSubmodules.checked;}
     if (hiddenInput) {json_data.max_file_size = hiddenInput.value;}
     if (patternType) {json_data.pattern_type = patternType.value;}
     if (pattern) {json_data.pattern = pattern.value;}

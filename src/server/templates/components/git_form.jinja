@@ -85,6 +85,23 @@
                 </div>
                 <!-- PAT checkbox with PAT field below -->
                 <div class="flex flex-col items-start w-full sm:col-span-2 lg:col-span-1 lg:row-span-2 lg:pt-3.5">
+                    <!-- Recurse submodules checkbox -->
+                    <div class="flex items-center space-x-2 mb-3">
+                        <label for="include_submodules"
+                               class="flex gap-2 text-gray-900 cursor-pointer">
+                            <div class="relative w-6 h-6">
+                                <input type="checkbox"
+                                       id="include_submodules"
+                                       name="include_submodules"
+                                       {% if include_submodules %}checked{% endif %}
+                                       class="cursor-pointer peer appearance-none w-full h-full rounded-sm border-[3px] border-current bg-white m-0 text-current shadow-[3px_3px_0_currentColor]" />
+                                <span class="absolute inset-0 w-3 h-3 m-auto scale-0 transition-transform duration-150 ease-in-out shadow-[inset_1rem_1rem_#FE4A60] bg-[CanvasText] origin-bottom-left peer-checked:scale-100"
+                                      style="clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%)"></span>
+                            </div>
+                            Recurse submodules
+                        </label>
+                        <span class="badge-new">NEW</span>
+                    </div>
                     <!-- PAT checkbox -->
                     <div class="flex items-center space-x-2">
                         <label for="showAccessSettings"

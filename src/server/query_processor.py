@@ -91,6 +91,7 @@ async def _check_s3_cache(
             repo_name=cast("str", query.repo_name),
             commit=query.commit,
             subpath=query.subpath,
+            include_submodules=query.include_submodules,
             include_patterns=query.include_patterns,
             ignore_patterns=query.ignore_patterns,
         )
@@ -170,6 +171,7 @@ def _store_digest_content(
             repo_name=cast("str", query.repo_name),
             commit=query.commit,
             subpath=query.subpath,
+            include_submodules=query.include_submodules,
             include_patterns=query.include_patterns,
             ignore_patterns=query.ignore_patterns,
         )
@@ -232,6 +234,7 @@ async def process_query(
     pattern_type: PatternType,
     pattern: str,
     token: str | None = None,
+    include_submodules: bool = False,
 ) -> IngestResponse:
     """Process a query by parsing input, cloning a repository, and generating a summary.
 
@@ -250,6 +253,8 @@ async def process_query(
         Pattern to include or exclude in the query, depending on the pattern type.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
+    include_submodules : bool
+        If ``True``, recursively clone and include Git submodules.
 
     Returns
     -------
@@ -272,6 +277,7 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
+    query.include_submodules = include_submodules
     query.max_file_size = max_file_size * 1024  # Convert to bytes since we currently use KB in higher levels
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,

@@ -19,6 +19,7 @@ COMMON_INGEST_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 async def _perform_ingestion(
     input_text: str,
+    include_submodules: bool,
     max_file_size: int,
     pattern_type: str,
     pattern: str,
@@ -33,6 +34,7 @@ async def _perform_ingestion(
 
         result = await process_query(
             input_text=input_text,
+            include_submodules=include_submodules,
             max_file_size=max_file_size,
             pattern_type=pattern_type,
             pattern=pattern,

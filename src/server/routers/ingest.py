@@ -42,6 +42,7 @@ async def api_ingest(
     """
     response = await _perform_ingestion(
         input_text=ingest_request.input_text,
+        include_submodules=ingest_request.include_submodules,
         max_file_size=ingest_request.max_file_size,
         pattern_type=ingest_request.pattern_type.value,
         pattern=ingest_request.pattern,
@@ -58,6 +59,7 @@ async def api_ingest_get(
     request: Request,  # noqa: ARG001 (unused-function-argument) # pylint: disable=unused-argument
     user: str,
     repository: str,
+    include_submodules: bool = False,
     max_file_size: int = DEFAULT_FILE_SIZE_KB,
     pattern_type: str = "exclude",
     pattern: str = "",
@@ -74,6 +76,7 @@ async def api_ingest_get(
     - **repository** (`str`): GitHub repository name
 
     **Query Parameters**
+    - **include_submodules** (`bool`, optional): Whether to recursively clone and include Git submodules (default: ``False``)
     - **max_file_size** (`int`, optional): Maximum file size in KB to include in the digest (default: 5120 KB)
     - **pattern_type** (`str`, optional): Type of pattern to use ("include" or "exclude", default: "exclude")
     - **pattern** (`str`, optional): Pattern to include or exclude in the query (default: "")
@@ -84,6 +87,7 @@ async def api_ingest_get(
     """
     response = await _perform_ingestion(
         input_text=f"{user}/{repository}",
+        include_submodules=include_submodules,
         max_file_size=max_file_size,
         pattern_type=pattern_type,
         pattern=pattern,

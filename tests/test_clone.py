@@ -206,6 +206,27 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
 
 
 @pytest.mark.asyncio
+async def test_clone_with_private_submodules_uses_askpass(tmp_path: Path, gitpython_mocks: dict) -> None:
+    """Test cloning a repo with private submodules using a non-interactive auth helper.
+
+    Given ``include_submodules=True`` and a GitHub token:
+    When ``clone_repo`` is called,
+    Then it should configure GIT_ASKPASS so submodules can be cloned without a TTY prompt.
+    """
+    local_repo_path = tmp_path / "repo"
+    clone_config = CloneConfig(url=DEMO_URL, local_path=str(local_repo_path), branch="main", include_submodules=True)
+
+    await clone_repo(clone_config, token="token123")  # noqa: S106 (test-only)
+
+    askpass_path = local_repo_path / ".git" / "gitingest-askpass.sh"
+    assert askpass_path.exists()
+    assert "token123" not in askpass_path.read_text(encoding="utf-8")
+
+    mock_repo = gitpython_mocks["repo"]
+    assert any("GIT_ASKPASS" in kwargs for _, kwargs in mock_repo.git.update_environment.call_args_list)
+
+
+@pytest.mark.asyncio
 async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
     """Test ``check_repo_exists`` with authentication token.
 
