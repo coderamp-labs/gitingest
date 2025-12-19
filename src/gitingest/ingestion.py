@@ -67,6 +67,18 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
             logger.error("Expected file but found non-file", extra={"path": str(path)})
             msg = f"Path {path} is not a file"
             raise ValueError(msg)
+        
+        if query.url:
+            from gitingest.utils.git_utils import create_git_repo
+            repo = create_git_repo(str(query.local_path), query.url)
+            
+            try:
+                # Verify the path exists in the specific Git reference
+                rev_path = f"{query.commit or query.branch or 'HEAD'}:{query.subpath.lstrip('/')}"
+                repo.git.rev_parse("--verify", rev_path)
+            except Exception as exc:
+                msg = f"File '{query.subpath}' not found in the requested Git reference."
+                raise ValueError(msg) from exc
 
         relative_path = path.relative_to(query.local_path)
 
