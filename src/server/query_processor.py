@@ -232,6 +232,8 @@ async def process_query(
     pattern_type: PatternType,
     pattern: str,
     token: str | None = None,
+    *,
+    include_submodules: bool = False,
 ) -> IngestResponse:
     """Process a query by parsing input, cloning a repository, and generating a summary.
 
@@ -250,6 +252,8 @@ async def process_query(
         Pattern to include or exclude in the query, depending on the pattern type.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
+    include_submodules : bool
+        Whether to include Git submodules in the analysis.
 
     Returns
     -------
@@ -272,6 +276,7 @@ async def process_query(
         return IngestErrorResponse(error=str(exc))
 
     query.url = cast("str", query.url)
+    query.include_submodules = include_submodules
     query.max_file_size = max_file_size * 1024  # Convert to bytes since we currently use KB in higher levels
     query.ignore_patterns, query.include_patterns = process_patterns(
         exclude_patterns=pattern if pattern_type == PatternType.EXCLUDE else None,

@@ -23,6 +23,8 @@ async def _perform_ingestion(
     pattern_type: str,
     pattern: str,
     token: str | None,
+    *,
+    include_submodules: bool = False,
 ) -> JSONResponse:
     """Run ``process_query`` and wrap the result in a ``FastAPI`` ``JSONResponse``.
 
@@ -37,6 +39,7 @@ async def _perform_ingestion(
             pattern_type=pattern_type,
             pattern=pattern,
             token=token,
+            include_submodules=include_submodules,
         )
 
         if isinstance(result, IngestErrorResponse):

@@ -46,6 +46,7 @@ async def api_ingest(
         pattern_type=ingest_request.pattern_type.value,
         pattern=ingest_request.pattern,
         token=ingest_request.token,
+        include_submodules=ingest_request.include_submodules,
     )
     # limit URL to 255 characters
     ingest_counter.labels(status=response.status_code, url=ingest_request.input_text[:255]).inc()

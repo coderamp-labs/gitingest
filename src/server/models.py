@@ -37,6 +37,8 @@ class IngestRequest(BaseModel):
         Glob/regex pattern string for file filtering.
     token : str | None
         GitHub personal access token (PAT) for accessing private repositories.
+    include_submodules : bool
+        Whether to include Git submodules in the analysis.
 
     """
 
@@ -45,6 +47,7 @@ class IngestRequest(BaseModel):
     pattern_type: PatternType = Field(default=PatternType.EXCLUDE, description="Pattern type for file filtering")
     pattern: str = Field(default="", description="Glob/regex pattern for file filtering")
     token: str | None = Field(default=None, description="GitHub PAT for private repositories")
+    include_submodules: bool = Field(default=False, description="Whether to include Git submodules")
 
     @field_validator("input_text")
     @classmethod

@@ -130,11 +130,17 @@ function collectFormData(form) {
     const patternType = document.getElementById('pattern_type');
     const pattern = document.getElementById('pattern');
 
-    if (inputText) {json_data.input_text = inputText.value;}
-    if (token) {json_data.token = token.value;}
-    if (hiddenInput) {json_data.max_file_size = hiddenInput.value;}
-    if (patternType) {json_data.pattern_type = patternType.value;}
-    if (pattern) {json_data.pattern = pattern.value;}
+    // Add this line to capture the submodule toggle
+    const includeSubmodules = document.getElementById('include_submodules');
+
+    if (inputText) { json_data.input_text = inputText.value; }
+    if (token) { json_data.token = token.value; }
+    if (hiddenInput) { json_data.max_file_size = hiddenInput.value; }
+    if (patternType) { json_data.pattern_type = patternType.value; }
+    if (pattern) { json_data.pattern = pattern.value; }
+
+    // Set the boolean value for the backend
+    if (includeSubmodules) { json_data.include_submodules = includeSubmodules.checked; }
 
     return json_data;
 }
