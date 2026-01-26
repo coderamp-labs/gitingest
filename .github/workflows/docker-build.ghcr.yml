@@ -124,7 +124,7 @@ jobs:
 
       - name: Generate artifact attestation
         if: github.event_name != 'pull_request' || env.PUSH_FROM_PR == 'true'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
