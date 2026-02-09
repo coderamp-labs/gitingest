@@ -44,6 +44,7 @@ async def ingest_async(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    append: bool = False,
 ) -> tuple[str, str, str]:
     """Ingest a source and process its contents.
 
@@ -76,6 +77,8 @@ async def ingest_async(
         File path where the summary and content should be written.
         If ``"-"`` (dash), the results are written to ``stdout``.
         If ``None``, the results are not written to a file.
+    append : bool
+        If ``True``, append to the output file instead of overwriting it (default: ``False``).
 
     Returns
     -------
@@ -141,8 +144,8 @@ async def ingest_async(
         summary, tree, content = ingest_query(query)
 
         if output:
-            logger.debug("Writing output to file", extra={"output_path": output})
-        await _write_output(tree, content=content, target=output)
+            logger.debug("Writing output to file", extra={"output_path": output, "append": append})
+        await _write_output(tree, content=content, target=output, append=append)
 
         logger.info("Ingestion completed successfully")
         return summary, tree, content
@@ -160,6 +163,7 @@ def ingest(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    append: bool = False,
 ) -> tuple[str, str, str]:
     """Provide a synchronous wrapper around ``ingest_async``.
 
@@ -192,6 +196,8 @@ def ingest(
         File path where the summary and content should be written.
         If ``"-"`` (dash), the results are written to ``stdout``.
         If ``None``, the results are not written to a file.
+    append : bool
+        If ``True``, append to the output file instead of overwriting it (default: ``False``).
 
     Returns
     -------
@@ -218,6 +224,7 @@ def ingest(
             include_submodules=include_submodules,
             token=token,
             output=output,
+            append=append,
         ),
     )
 
@@ -330,7 +337,13 @@ def _handle_remove_readonly(
     func(path)
 
 
-async def _write_output(tree: str, content: str, target: str | None) -> None:
+def _save_file(target: str, data: str, mode: str) -> None:
+    """Write data to the target file using the specified mode."""
+    with open(target, mode, encoding="utf-8") as f:
+        f.write(data)
+
+
+async def _write_output(tree: str, content: str, target: str | None, append: bool = False) -> None:
     """Write combined output to ``target`` (``"-"`` ⇒ stdout).
 
     Parameters
@@ -341,6 +354,8 @@ async def _write_output(tree: str, content: str, target: str | None) -> None:
         The content of the files in the repository or directory.
     target : str | None
         The path to the output file. If ``None``, the results are not written to a file.
+    append : bool
+        If ``True``, append to the output file instead of overwriting it.
 
     """
     data = f"{tree}\n{content}"
@@ -349,4 +364,5 @@ async def _write_output(tree: str, content: str, target: str | None) -> None:
         await loop.run_in_executor(None, sys.stdout.write, data)
         await loop.run_in_executor(None, sys.stdout.flush)
     elif target is not None:
-        await loop.run_in_executor(None, Path(target).write_text, data, "utf-8")
+        mode = "a" if append else "w"
+        await loop.run_in_executor(None, _save_file, target, data, mode)

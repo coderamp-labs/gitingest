@@ -89,6 +89,25 @@ def test_cli_with_stdout_output() -> None:
         if output_file.exists():
             output_file.unlink()
 
+def test_cli_append_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that using --append appends to the file instead of overwriting."""
+    monkeypatch.chdir(tmp_path)
+    output_file = tmp_path / "digest.txt"
+
+    # First run (create)
+    result1 = _invoke_isolated_cli_runner(["./", "-o", "digest.txt"])
+    assert result1.exit_code == 0
+    assert output_file.exists()
+    content1 = output_file.read_text("utf-8")
+
+    # Second run (append)
+    result2 = _invoke_isolated_cli_runner(["./", "-o", "digest.txt", "--append"])
+    assert result2.exit_code == 0
+    content2 = output_file.read_text("utf-8")
+
+    assert len(content2) > len(content1)
+    # The file should now contain the directory structure twice
+    assert content2.count("Directory structure:") == 2
 
 def _invoke_isolated_cli_runner(args: list[str]) -> Result:
     """Return a ``CliRunner`` that keeps ``stderr`` separate on Click 8.0-8.1."""

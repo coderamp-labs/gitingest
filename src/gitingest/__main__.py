@@ -29,6 +29,7 @@ class _CLIArgs(TypedDict):
     include_submodules: bool
     token: str | None
     output: str | None
+    append: bool
 
 
 @click.command()
@@ -76,6 +77,13 @@ class _CLIArgs(TypedDict):
     default=None,
     help="Output file path (default: digest.txt in current directory). Use '-' for stdout.",
 )
+@click.option(
+    "--append",
+    "-a",
+    is_flag=True,
+    default=False,
+    help="Append to the output file instead of overwriting it.",
+)
 def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     """Run the CLI entry point to analyze a repo / directory and dump its contents.
 
@@ -110,6 +118,9 @@ def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     Include submodules:
         $ gitingest https://github.com/user/repo --include-submodules
 
+    Append to existing file:
+        $ gitingest -o digest.txt --append
+
     """
     asyncio.run(_async_main(**cli_kwargs))
 
@@ -125,6 +136,7 @@ async def _async_main(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    append: bool = False,
 ) -> None:
     """Analyze a directory or repository and create a text dump of its contents.
 
@@ -154,6 +166,8 @@ async def _async_main(
     output : str | None
         The path where the output file will be written (default: ``digest.txt`` in current directory).
         Use ``"-"`` to write to ``stdout``.
+    append : bool
+        If ``True``, append to the output file instead of overwriting it (default: ``False``).
 
     Raises
     ------
@@ -171,7 +185,8 @@ async def _async_main(
         if output_target == "-":
             click.echo("Analyzing source, preparing output for stdout...", err=True)
         else:
-            click.echo(f"Analyzing source, output will be written to '{output_target}'...", err=True)
+            action = "appended" if append else "written"
+            click.echo(f"Analyzing source, output will be {action} to '{output_target}'...", err=True)
 
         summary, _, _ = await ingest_async(
             source,
@@ -183,6 +198,7 @@ async def _async_main(
             include_submodules=include_submodules,
             token=token,
             output=output_target,
+            append=append,
         )
     except Exception as exc:
         # Convert any exception into Click.Abort so that exit status is non-zero
@@ -195,7 +211,8 @@ async def _async_main(
         click.echo("--- End Summary ---", err=True)
         click.echo("Analysis complete! Output sent to stdout.", err=True)
     else:  # file
-        click.echo(f"Analysis complete! Output written to: {output_target}")
+        action = "appended" if append else "written"
+        click.echo(f"Analysis complete! Output {action} to: {output_target}")
         click.echo("\nSummary:")
         click.echo(summary)
 
