@@ -1,7 +1,7 @@
 {% extends "base.jinja" %}
 {% block content %}
     {% if error_message %}
-        <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"
+        <div class="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-200"
              id="error-message"
              data-message="{{ error_message }}">{{ error_message }}</div>
     {% endif %}

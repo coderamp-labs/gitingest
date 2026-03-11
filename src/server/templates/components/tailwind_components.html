@@ -1,13 +1,13 @@
 <style type="text/tailwindcss">
   @layer components {
     .badge-new {
-      @apply inline-block -rotate-6 -translate-y-1 mx-1 px-1 bg-[#FE4A60] border border-gray-900 text-white text-[10px] font-bold shadow-[2px_2px_0_0_rgba(0,0,0,1)];
+      @apply inline-block -rotate-6 -translate-y-1 mx-1 px-1 bg-[#FE4A60] border border-gray-900 text-gray-200 text-[10px] font-bold shadow-[2px_2px_0_0_rgba(0,0,0,1)] dark:border-gray-600;
     }
     .landing-page-title {
-      @apply inline-block w-full relative text-center text-4xl sm:text-5xl md:text-6xl lg:text-7xl sm:pt-20 lg:pt-5 font-bold tracking-tighter;
+      @apply inline-block w-full relative text-center text-4xl sm:text-5xl md:text-6xl lg:text-7xl sm:pt-20 lg:pt-5 font-bold tracking-tighter dark:text-gray-200;
     }
     .intro-text {
-      @apply text-center text-gray-600 text-lg max-w-2xl mx-auto;
+      @apply text-center text-gray-600 text-lg max-w-2xl mx-auto dark:text-gray-400;
     }
     .sparkle-red {
       @apply absolute flex-shrink-0 h-auto w-14 sm:w-20 md:w-24 p-2 left-0 lg:ml-32 -translate-x-2 md:translate-x-10 lg:-translate-x-full -translate-y-4 sm:-translate-y-8 md:-translate-y-0 lg:-translate-y-10;
@@ -16,7 +16,7 @@
       @apply absolute flex-shrink-0 right-0 bottom-0 w-10 sm:w-16 lg:w-20 -translate-x-10 lg:-translate-x-12 translate-y-4 sm:translate-y-10 md:translate-y-2 lg:translate-y-4;
     }
     .pattern-select {
-      @apply min-w-max appearance-none pr-6 pl-2 py-2 bg-[#e6e8eb] border-r-[3px] border-gray-900 cursor-pointer focus:outline-none;
+      @apply min-w-max appearance-none pr-6 pl-2 py-2 bg-[#e6e8eb] border-r-[3px] border-gray-900 cursor-pointer focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200;
     }
   }
 
@@ -27,6 +27,24 @@
     }
     .link-bounce {
       @apply transition-transform hover:-translate-y-0.5;
+    }
+
+    /* Fix autofill styles in light mode */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px #E8F0FE inset !important;
+        -webkit-text-fill-color: #111827 !important;
+    }
+
+    /* Fix autofill styles in dark mode */
+    .dark input:-webkit-autofill,
+    .dark input:-webkit-autofill:hover,
+    .dark input:-webkit-autofill:focus,
+    .dark input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
+        -webkit-text-fill-color: #e5e7eb !important;
     }
   }
 </style>

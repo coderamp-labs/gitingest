@@ -1,7 +1,7 @@
 {% from 'components/_macros.jinja' import footer_icon_link %}
-<footer class="w-full border-t-[3px] border-gray-900 mt-auto">
+<footer class="w-full border-t-[3px] border-gray-900 dark:border-gray-600 mt-auto bg-[#FFFDF8] dark:bg-gray-900">
     <div class="max-w-4xl mx-auto px-4 py-4">
-        <div class="grid grid-cols-3 items-center text-gray-900 text-sm">
+        <div class="grid grid-cols-3 items-center text-gray-900 dark:text-gray-400 text-sm">
             {# Left column — Chrome + PyPI #}
             <div class="flex items-center space-x-4">
                 {{ footer_icon_link('https://chromewebstore.google.com/detail/adfjahbijlkjfoicpjkhjicpjpjfaood',
@@ -13,14 +13,12 @@
             </div>
             {# Middle column - Version information #}
             <div class="flex justify-center">
-                <span>Version:&nbsp;</span>
                 {% if version != "unknown" %}
+                    <span>Version:&nbsp;</span>
                     <a href="{{ version_link }}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="text-blue-600 hover:text-blue-800 underline">{{ version }}</a>
-                {% else %}
-                    <span>{{ version }}</span>
+                       class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline">{{ version }}</a>
                 {% endif %}
             </div>
             {# Right column - Discord #}

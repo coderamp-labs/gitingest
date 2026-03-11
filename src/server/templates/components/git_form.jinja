@@ -1,6 +1,6 @@
 <div class="relative">
-    <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
-    <div class="rounded-xl relative z-20 p-8 sm:p-10 border-[3px] border-gray-900 bg-[#fff4da]">
+    <div class="w-full h-full absolute inset-0 bg-gray-900 dark:bg-gray-700 rounded-xl translate-y-2 translate-x-2"></div>
+    <div class="rounded-xl relative z-20 p-8 sm:p-10 border-[3px] border-gray-900 dark:border-gray-600 bg-[#fff4da] dark:bg-gray-800">
         <img src="https://cdn.devdojo.com/images/january2023/shape-1.png"
              class="absolute md:block hidden left-0 h-[4.5rem] w-[4.5rem] bottom-0 -translate-x-full ml-3">
         <!-- Ingest Form -->
@@ -9,20 +9,22 @@
             <div class="flex md:flex-row flex-col w-full h-full justify-center items-stretch space-y-5 md:space-y-0 md:space-x-5">
                 <!-- Repository URL Input -->
                 <div class="relative w-full h-full">
-                    <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                    <div class="w-full h-full rounded bg-gray-900 dark:bg-gray-700 translate-y-1 translate-x-1 absolute inset-0 z-10">
+                    </div>
                     <input type="text"
                            name="input_text"
                            id="input_text"
                            placeholder="https://github.com/..."
                            value="{{ repo_url if repo_url else '' }}"
                            required
-                           class="border-[3px] w-full relative z-20 border-gray-900 placeholder-gray-600 text-lg font-medium focus:outline-none py-3.5 px-6 rounded bg-[#E8F0FE]">
+                           class="border-[3px] w-full relative z-20 border-gray-900 dark:border-gray-600 placeholder-gray-600 dark:placeholder-gray-400 text-lg font-medium focus:outline-none py-3.5 px-6 rounded bg-[#E8F0FE] dark:bg-gray-700 dark:text-gray-200">
                 </div>
                 <!-- Ingest button -->
                 <div class="relative w-auto flex-shrink-0 h-full group">
-                    <div class="w-full h-full rounded bg-gray-800 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                    <div class="w-full h-full rounded bg-gray-800 dark:bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10">
+                    </div>
                     <button type="submit"
-                            class="py-3.5 rounded px-6 group-hover:-translate-y-px group-hover:-translate-x-px ease-out duration-300 z-20 relative w-full border-[3px] border-gray-900 font-medium bg-[#ffc480] tracking-wide text-lg flex-shrink-0 text-gray-900">
+                            class="py-3.5 rounded px-6 group-hover:-translate-y-px group-hover:-translate-x-px ease-out duration-300 z-20 relative w-full border-[3px] border-gray-900 dark:border-gray-600 font-medium bg-[#ffc480] dark:bg-gray-800 dark:hover:bg-gray-700 tracking-wide text-lg flex-shrink-0 text-gray-900 dark:text-gray-200">
                         Ingest
                     </button>
                 </div>
@@ -35,8 +37,9 @@
                  class="mt-7 grid gap-6 grid-cols-1 sm:grid-cols-[3fr_2fr] md:gap-x-10 lg:grid-cols-[5fr_4fr_4fr] lg:gap-y-0">
                 <!-- Pattern selector -->
                 <div class="w-full relative self-center">
-                    <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
-                    <div class="flex relative z-20 border-[3px] border-gray-900 rounded bg-white">
+                    <div class="w-full h-full rounded bg-gray-900 dark:bg-gray-700 translate-y-1 translate-x-1 absolute inset-0 z-10">
+                    </div>
+                    <div class="flex relative z-20 border-[3px] border-gray-900 dark:border-gray-600 rounded bg-white dark:bg-gray-800">
                         <!-- Pattern type selector -->
                         <div class="relative flex items-center">
                             <select id="pattern_type"
@@ -49,7 +52,7 @@
                                 </option>
                                 <option value="include" {% if pattern_type == 'include' %}selected{% endif %}>Include</option>
                             </select>
-                            <svg class="absolute right-2 w-4 h-4 pointer-events-none"
+                            <svg class="absolute right-2 w-4 h-4 pointer-events-none dark:text-gray-300"
                                  xmlns="http://www.w3.org/2000/svg"
                                  viewBox="0 0 24 24"
                                  fill="none"
@@ -66,12 +69,12 @@
                                name="pattern"
                                placeholder="*.md, src/ "
                                value="{{ pattern if pattern else '' }}"
-                               class=" py-2 px-2 bg-[#E8F0FE] focus:outline-none w-full">
+                               class=" py-2 px-2 bg-[#E8F0FE] dark:bg-gray-800 dark:text-gray-200 focus:outline-none w-full">
                     </div>
                 </div>
                 <!-- File size selector -->
                 <div class="w-full self-center">
-                    <label for="file_size" class="block text-gray-700 mb-1">
+                    <label for="file_size" class="block text-gray-700 dark:text-gray-300 mb-1">
                         Include files under: <span id="size_value" class="font-bold">50kB</span>
                     </label>
                     <input type="range"
@@ -80,7 +83,7 @@
                            max="500"
                            required
                            value="{{ default_max_file_size }}"
-                           class="w-full h-3 bg-[#FAFAFA] bg-no-repeat bg-[length:50%_100%] bg-[#ebdbb7] appearance-none border-[3px] border-gray-900 rounded-sm focus:outline-none bg-gradient-to-r from-[#FE4A60] to-[#FE4A60] [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-solid [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:shadow-[3px_3px_0_#000]">
+                           class="w-full h-3 bg-[#FAFAFA] dark:bg-gray-700 bg-no-repeat bg-[length:50%_100%] bg-[#ebdbb7] appearance-none border-[3px] border-gray-900 dark:border-gray-600 rounded-sm focus:outline-none bg-gradient-to-r from-[#FE4A60] to-[#FE4A60] [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-white dark:[&::-webkit-slider-thumb]:bg-gray-400 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-solid [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-gray-900 dark:[&::-webkit-slider-thumb]:border-gray-600 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:bg-white dark:[&::-moz-range-thumb]:bg-gray-400 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-solid [&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-gray-900 dark:[&::-moz-range-thumb]:border-gray-600">
                     <input type="hidden" id="max_file_size_kb" name="max_file_size" value="">
                 </div>
                 <!-- PAT checkbox with PAT field below -->
@@ -88,14 +91,14 @@
                     <!-- PAT checkbox -->
                     <div class="flex items-center space-x-2">
                         <label for="showAccessSettings"
-                               class="flex gap-2 text-gray-900 cursor-pointer">
+                               class="flex gap-2 text-gray-900 dark:text-gray-300 cursor-pointer">
                             <div class="relative w-6 h-6">
                                 <input type="checkbox"
                                        id="showAccessSettings"
                                        onchange="toggleAccessSettings()"
                                        {% if token %}checked{% endif %}
-                                       class="cursor-pointer peer appearance-none w-full h-full rounded-sm border-[3px] border-current bg-white m-0 text-current shadow-[3px_3px_0_currentColor]" />
-                                <span class="absolute inset-0 w-3 h-3 m-auto scale-0 transition-transform duration-150 ease-in-out shadow-[inset_1rem_1rem_#FE4A60] bg-[CanvasText] origin-bottom-left peer-checked:scale-100"
+                                       class="cursor-pointer peer appearance-none w-full h-full rounded-sm border-[3px] border-current bg-white dark:bg-gray-800 dark:border-gray-500 m-0 text-current shadow-[3px_3px_0_currentColor] dark:shadow-[3px_3px_0_#6b7280]" />
+                                <span class="absolute inset-0 w-3 h-3 m-auto scale-0 transition-transform duration-150 ease-in-out shadow-[inset_1rem_1rem_#FE4A60] bg-[CanvasText] dark:bg-gray-300 origin-bottom-left peer-checked:scale-100"
                                       style="clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%)"></span>
                             </div>
                             Private Repository
@@ -106,18 +109,19 @@
                     <div id="accessSettingsContainer"
                          class="{% if not token %}hidden {% endif %}mt-3 w-full">
                         <div class="relative w-full">
-                            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
-                            <div class="flex relative z-20 border-[3px] border-gray-900 rounded bg-white">
+                            <div class="w-full h-full rounded bg-gray-900 dark:bg-gray-700 translate-y-1 translate-x-1 absolute inset-0 z-10">
+                            </div>
+                            <div class="flex relative z-20 border-[3px] border-gray-900 dark:border-gray-600 rounded bg-white dark:bg-gray-800">
                                 <input id="token"
                                        type="password"
                                        name="token"
                                        placeholder="Personal Access Token"
                                        value="{{ token if token else '' }}"
-                                       class="py-2 pl-2 pr-8 bg-[#E8F0FE] focus:outline-none w-full rounded">
+                                       class="py-2 pl-2 pr-8 bg-[#E8F0FE] dark:bg-gray-800 dark:text-gray-200 focus:outline-none w-full rounded">
                                 <!-- Info icon with tooltip -->
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2">
                                     <!-- Icon -->
-                                    <svg class="w-4 h-4 text-gray-600 cursor-pointer peer"
+                                    <svg class="w-4 h-4 text-gray-600 dark:text-gray-400 cursor-pointer peer"
                                          xmlns="http://www.w3.org/2000/svg"
                                          fill="none"
                                          viewBox="0 0 24 24"
@@ -127,7 +131,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01" />
                                     </svg>
                                     <!-- Tooltip (tooltip listens to peer-hover) -->
-                                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs leading-tight py-1 px-2 rounded shadow-lg opacity-0 pointer-events-none peer-hover:opacity-100 peer-hover:pointer-events-auto transition-opacity duration-200 whitespace-nowrap">
+                                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-700 text-gray-200 text-xs leading-tight py-1 px-2 rounded shadow-lg opacity-0 pointer-events-none peer-hover:opacity-100 peer-hover:pointer-events-auto transition-opacity duration-200 whitespace-nowrap">
                                         <ul class="list-disc pl-4">
                                             <li>PAT is never stored in the backend</li>
                                             <li>Used once for cloning, then discarded from memory</li>
@@ -143,7 +147,7 @@
                             <a href="https://github.com/settings/tokens/new?description=gitingest&scopes=repo"
                                target="_blank"
                                rel="noopener noreferrer"
-                               class="text-sm text-gray-600 hover:text-gray-800 flex items-center space-x-1 underline">
+                               class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 flex items-center space-x-1 underline">
                                 <span>Get your token</span>
                                 <svg class="w-3 h-3"
                                      fill="none"
@@ -162,11 +166,11 @@
         {% if show_examples %}
             <div id="exampleRepositories"
                  class="{% if token %}lg:mt-0 {% endif %} mt-4">
-                <p class="opacity-70 mb-1">Try these example repositories:</p>
+                <p class="opacity-70 dark:text-gray-300 mb-1">Try these example repositories:</p>
                 <div class="flex flex-wrap gap-2">
                     {% for example in examples %}
                         <button onclick="submitExample('{{ example.url }}')"
-                                class="px-4 py-1 bg-[#EBDBB7] hover:bg-[#FFC480] text-gray-900 rounded transition-colors duration-200 border-[3px] border-gray-900 relative hover:-translate-y-px hover:-translate-x-px">
+                                class="px-4 py-1 bg-[#EBDBB7] dark:bg-gray-700 hover:bg-[#FFC480] dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200 rounded transition-colors duration-200 border-[3px] border-gray-900 dark:border-gray-600 relative hover:-translate-y-px hover:-translate-x-px">
                             {{ example.name }}
                         </button>
                     {% endfor %}

@@ -51,9 +51,21 @@
             {% endblock %}
         </title>
         <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            tailwind.config = {
+                darkMode: 'class',
+            }
+        </script>
+        <script>
+            if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark')
+            } else {
+                document.documentElement.classList.remove('dark')
+            }
+        </script>
         {% include 'components/tailwind_components.html' %}
     </head>
-    <body class="bg-[#FFFDF8] min-h-screen flex flex-col">
+    <body class="bg-[#FFFDF8] dark:bg-gray-900 min-h-screen flex flex-col dark:text-gray-200">
         {% include 'components/navbar.jinja' %}
         {# Main content wrapper #}
         <main class="flex-1 w-full">

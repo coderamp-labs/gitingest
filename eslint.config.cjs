@@ -21,6 +21,7 @@ module.exports = [
         submitExample: 'readonly',
         toggleAccessSettings: 'readonly',
         toggleFile: 'readonly',
+        toggleTheme: 'readonly',
       },
     },
 

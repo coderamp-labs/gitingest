@@ -144,7 +144,7 @@ function setButtonLoadingState(submitButton, isLoading) {
     if (!isLoading) {
         submitButton.disabled = false;
         submitButton.innerHTML = submitButton.getAttribute('data-original-content') || 'Submit';
-        submitButton.classList.remove('bg-[#ffb14d]');
+        submitButton.classList.remove('bg-[#ffb14d]', 'dark:bg-gray-700');
 
         return;
     }
@@ -157,14 +157,14 @@ function setButtonLoadingState(submitButton, isLoading) {
     submitButton.disabled = true;
     submitButton.innerHTML = `
         <div class="flex items-center justify-center">
-            <svg class="animate-spin h-5 w-5 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-5 w-5 text-gray-900 dark:text-gray-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span class="ml-2">Processing...</span>
+            <span class="ml-2 dark:text-gray-200">Processing...</span>
         </div>
     `;
-    submitButton.classList.add('bg-[#ffb14d]');
+    submitButton.classList.add('bg-[#ffb14d]', 'dark:bg-gray-700');
 }
 
 // Helper function to handle successful response
@@ -249,19 +249,19 @@ function handleSubmit(event, showLoadingSpinner = false) {
                 if (Array.isArray(data.detail)) {
                     const details = data.detail.map((d) => `<li>${d.msg || JSON.stringify(d)}</li>`).join('');
 
-                    showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'><b>Error(s):</b><ul>${details}</ul></div>`);
+                    showError(`<div class='mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-200'><b>Error(s):</b><ul>${details}</ul></div>`);
 
                     return;
                 }
                 // Other errors
-                showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'>${data.error || JSON.stringify(data) || 'An error occurred.'}</div>`);
+                showError(`<div class='mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-200'>${data.error || JSON.stringify(data) || 'An error occurred.'}</div>`);
 
                 return;
             }
 
             // Handle error in data
             if (data.error) {
-                showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'>${data.error}</div>`);
+                showError(`<div class='mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-200'>${data.error}</div>`);
 
                 return;
             }
@@ -270,7 +270,7 @@ function handleSubmit(event, showLoadingSpinner = false) {
         })
         .catch((error) => {
             setButtonLoadingState(submitButton, false);
-            showError(`<div class='mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700'>${error}</div>`);
+            showError(`<div class='mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-200'>${error}</div>`);
         });
 }
 
@@ -403,9 +403,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle('dark');
+
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+}
+
 // Make sure these are available globally
 window.handleSubmit = handleSubmit;
 window.toggleFile = toggleFile;
 window.copyText = copyText;
 window.copyFullDigest = copyFullDigest;
 window.downloadFullDigest = downloadFullDigest;
+window.toggleTheme = toggleTheme;

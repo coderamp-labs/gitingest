@@ -1,31 +1,53 @@
-<header class="sticky top-0 bg-[#FFFDF8] border-b-[3px] border-gray-900 z-50">
+<header class="sticky top-0 bg-[#FFFDF8] dark:bg-gray-900 border-b-[3px] border-gray-900 dark:border-gray-600 z-50">
     <div class="max-w-4xl mx-auto px-4">
         <div class="flex justify-between items-center h-16">
             {# Logo #}
             <div class="flex items-center gap-4">
                 <h1 class="text-2xl font-bold tracking-tight">
                     <a href="/" class="hover:opacity-80 transition-opacity">
-                        <span class="text-gray-900">Git</span><span class="text-[#FE4A60]">ingest</span>
+                        <span class="text-gray-900 dark:text-gray-200">Git</span><span class="text-[#FE4A60]">ingest</span>
                     </a>
                 </h1>
             </div>
             {# Navigation with updated styling #}
             <nav class="flex items-center space-x-6">
-                <a href="/llms.txt" class="link-bounce flex items-center text-gray-900">
+                <a href="/llms.txt"
+                   class="link-bounce flex items-center text-gray-900 dark:text-gray-300">
                     <span class="badge-new">NEW</span>
                     /llms.txt
                 </a>
+                {# Theme toggle #}
+                <button onclick="toggleTheme()"
+                        class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        aria-label="Toggle theme">
+                    {# Moon icon (shown in light mode) #}
+                    <svg class="w-5 h-5 block dark:hidden text-gray-900"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                    {# Sun icon (shown in dark mode) #}
+                    <svg class="w-5 h-5 hidden dark:block text-yellow-300"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 11H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                    </svg>
+                </button>
                 {# GitHub link #}
                 <div class="flex items-center gap-2">
                     <a href="https://github.com/coderamp-labs/gitingest"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="link-bounce flex items-center gap-1.5 text-gray-900">
-                        <img src="/static/icons/github.svg" class="w-4 h-4" alt="GitHub logo">
+                       class="link-bounce flex items-center gap-1.5 text-gray-900 dark:text-gray-300">
+                        <img src="/static/icons/github.svg"
+                             class="w-4 h-4 dark:invert dark:opacity-80"
+                             alt="GitHub logo">
                         GitHub
                     </a>
                     {# Star counter #}
-                    <div class="no-drag flex items-center text-sm text-gray-600">
+                    <div class="no-drag flex items-center text-sm text-gray-600 dark:text-gray-400">
                         <img src="/static/svg/github-star.svg"
                              class="w-4 h-4 mr-1"
                              alt="GitHub star icon">
