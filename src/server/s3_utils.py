@@ -65,6 +65,7 @@ def generate_s3_file_path(
     subpath: str,
     include_patterns: set[str] | None,
     ignore_patterns: set[str],
+    max_file_size: int,
 ) -> str:
     """Generate S3 file path with proper naming convention.
 
@@ -92,6 +93,8 @@ def generate_s3_file_path(
         Set of patterns specifying which files to include.
     ignore_patterns : set[str]
         Set of patterns specifying which files to exclude.
+    max_file_size : int
+        Maximum file size in bytes to include in the ingestion.
 
     Returns
     -------
@@ -110,9 +113,10 @@ def generate_s3_file_path(
         logger.error(msg)
         raise ValueError(msg)
 
-    # Create hash of exclude/include patterns for uniqueness
+    # Create hash of exclude/include patterns and size for uniqueness
     patterns_str = f"include:{sorted(include_patterns) if include_patterns else []}"
     patterns_str += f"exclude:{sorted(ignore_patterns)}"
+    patterns_str += f"size:{max_file_size}"
     patterns_hash = hashlib.sha256(patterns_str.encode()).hexdigest()[:16]
     subpath_hash = hashlib.sha256(subpath.encode()).hexdigest()[:16]
 

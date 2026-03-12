@@ -93,6 +93,7 @@ async def _check_s3_cache(
             subpath=query.subpath,
             include_patterns=query.include_patterns,
             ignore_patterns=query.ignore_patterns,
+            max_file_size=query.max_file_size,
         )
 
         # Check if file exists on S3
@@ -172,6 +173,7 @@ def _store_digest_content(
             subpath=query.subpath,
             include_patterns=query.include_patterns,
             ignore_patterns=query.ignore_patterns,
+            max_file_size=query.max_file_size,
         )
         s3_url = upload_to_s3(content=digest_content, s3_file_path=s3_file_path, ingest_id=query.id)
 
