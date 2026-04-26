@@ -96,18 +96,32 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
         }
 
         with git_auth_context(url, token) as (git_cmd, auth_url):
+            # Determine branch/tag flag for --single-branch to fetch the correct ref
+            branch_args: list[str] = []
+            if config.branch:
+                branch_args = ["-b", config.branch]
+            elif config.tag:
+                branch_args = ["-b", config.tag]
+
             if partial_clone:
                 # For partial clones, use git.Git() with filter and sparse options
                 cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                cmd_args.extend(branch_args)
                 cmd_args.extend(["--filter=blob:none", "--sparse"])
                 cmd_args.extend([auth_url, local_path])
                 git_cmd.clone(*cmd_args)
             elif token and is_github_host(url):
                 # For authenticated GitHub repos, use git_cmd with auth URL
-                cmd_args = ["--single-branch", "--no-checkout", "--depth=1", auth_url, local_path]
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                cmd_args.extend(branch_args)
+                cmd_args.extend([auth_url, local_path])
                 git_cmd.clone(*cmd_args)
             else:
                 # For non-authenticated repos, use the standard GitPython method
+                if config.branch:
+                    clone_kwargs["branch"] = config.branch
+                elif config.tag:
+                    clone_kwargs["branch"] = config.tag
                 git.Repo.clone_from(url, local_path, **clone_kwargs)
 
         logger.info("Git clone completed successfully")
