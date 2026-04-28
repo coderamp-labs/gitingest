@@ -99,15 +99,22 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
             if partial_clone:
                 # For partial clones, use git.Git() with filter and sparse options
                 cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                if config.branch:
+                    cmd_args.extend(["--branch", config.branch])
                 cmd_args.extend(["--filter=blob:none", "--sparse"])
                 cmd_args.extend([auth_url, local_path])
                 git_cmd.clone(*cmd_args)
             elif token and is_github_host(url):
                 # For authenticated GitHub repos, use git_cmd with auth URL
-                cmd_args = ["--single-branch", "--no-checkout", "--depth=1", auth_url, local_path]
+                cmd_args = ["--single-branch", "--no-checkout", "--depth=1"]
+                if config.branch:
+                    cmd_args.extend(["--branch", config.branch])
+                cmd_args.extend([auth_url, local_path])
                 git_cmd.clone(*cmd_args)
             else:
                 # For non-authenticated repos, use the standard GitPython method
+                if config.branch:
+                    clone_kwargs["branch"] = config.branch
                 git.Repo.clone_from(url, local_path, **clone_kwargs)
 
         logger.info("Git clone completed successfully")
@@ -124,9 +131,6 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
     # Perform post-clone operations
     await _perform_post_clone_operations(config, local_path, url, token, commit)
 
-    logger.info("Git clone operation completed successfully", extra={"local_path": local_path})
-
-
 async def _perform_post_clone_operations(
     config: CloneConfig,
     local_path: str,
@@ -135,7 +139,6 @@ async def _perform_post_clone_operations(
     commit: str,
 ) -> None:
     """Perform post-clone operations like fetching, checkout, and submodule updates.
-
     Parameters
     ----------
     config : CloneConfig
