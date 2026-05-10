@@ -150,6 +150,8 @@ See more options and usage details with:
 gitingest --help
 ```
 
+To publish your digest to the [understand-quickly](https://github.com/looptech-ai/understand-quickly) registry (opt-in, machine-readable index of code-context artifacts for AI agents), see [`docs/publishing.md`](docs/publishing.md).
+
 ## 🐍 Python package usage
 
 ```python
