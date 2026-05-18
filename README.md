@@ -144,6 +144,19 @@ By default, the digest is written to a text file (`digest.txt`) in your current 
 - Use `--output/-o <filename>` to write to a specific file.
 - Use `--output/-o -` to output directly to `STDOUT` (useful for piping to other tools).
 
+You can also restore a project structure from an existing digest:
+
+```bash
+# Restore digest content into the current directory
+gitingest digest.txt --restore
+
+# Restore into a specific folder
+gitingest digest.txt --restore --restore-dir ./restored-project
+
+# Allow overwriting existing files during restore
+gitingest digest.txt --restore --restore-dir ./restored-project --overwrite
+```
+
 See more options and usage details with:
 
 ```bash

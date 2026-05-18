@@ -10,6 +10,7 @@ from click.testing import CliRunner, Result
 
 from gitingest.__main__ import main
 from gitingest.config import MAX_FILE_SIZE, OUTPUT_FILE_NAME
+from gitingest.schemas.filesystem import SEPARATOR
 
 
 @pytest.mark.parametrize(
@@ -97,3 +98,26 @@ def _invoke_isolated_cli_runner(args: list[str]) -> Result:
         kwargs["mix_stderr"] = False  # Click 8.0-8.1
     runner = CliRunner(**kwargs)
     return runner.invoke(main, args)
+
+
+def test_cli_restore_mode(tmp_path: Path) -> None:
+    """Restore mode should recreate files from a digest."""
+    digest_path = tmp_path / OUTPUT_FILE_NAME
+    digest_path.write_text(
+        (
+            f"{SEPARATOR}\n"
+            "FILE: src/hello.py\n"
+            f"{SEPARATOR}\n"
+            "print('hello')\n\n"
+        ),
+        encoding="utf-8",
+    )
+
+    restore_target = tmp_path / "restored"
+    result = _invoke_isolated_cli_runner(
+        [str(digest_path), "--restore", "--restore-dir", str(restore_target)],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert "Recreated 1 files, 1 directories, and 0 symlinks" in result.stdout
+    assert (restore_target / "src" / "hello.py").read_text(encoding="utf-8") == "print('hello')"

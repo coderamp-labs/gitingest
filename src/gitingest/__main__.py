@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TypedDict
 
 import click
 from typing_extensions import Unpack
 
 from gitingest.config import MAX_FILE_SIZE, OUTPUT_FILE_NAME
+from gitingest.digest import restore_digest
 from gitingest.entrypoint import ingest_async
 
 # Import logging configuration first to intercept all logging
@@ -29,6 +31,9 @@ class _CLIArgs(TypedDict):
     include_submodules: bool
     token: str | None
     output: str | None
+    restore: bool
+    restore_dir: str
+    overwrite: bool
 
 
 @click.command()
@@ -75,6 +80,24 @@ class _CLIArgs(TypedDict):
     "-o",
     default=None,
     help="Output file path (default: digest.txt in current directory). Use '-' for stdout.",
+)
+@click.option(
+    "--restore",
+    is_flag=True,
+    default=False,
+    help="Restore a project from a digest file instead of generating one.",
+)
+@click.option(
+    "--restore-dir",
+    default=".",
+    show_default=True,
+    help="Destination directory used with --restore.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Allow overwriting files when restoring from digest.",
 )
 def main(**cli_kwargs: Unpack[_CLIArgs]) -> None:
     """Run the CLI entry point to analyze a repo / directory and dump its contents.
@@ -125,6 +148,9 @@ async def _async_main(
     include_submodules: bool = False,
     token: str | None = None,
     output: str | None = None,
+    restore: bool = False,
+    restore_dir: str = ".",
+    overwrite: bool = False,
 ) -> None:
     """Analyze a directory or repository and create a text dump of its contents.
 
@@ -161,6 +187,28 @@ async def _async_main(
         Raised if an error occurs during execution and the command must be aborted.
 
     """
+    if restore:
+        try:
+            digest_path = Path(source)
+            restored_files, restored_symlinks, restored_directories = restore_digest(
+                digest_path=digest_path,
+                destination=restore_dir,
+                overwrite=overwrite,
+            )
+        except Exception as exc:
+            click.echo(f"Error: {exc}", err=True)
+            raise click.Abort from exc
+
+        click.echo(
+            (
+                "Restore complete! "
+                f"Recreated {restored_files} files, "
+                f"{restored_directories} directories, "
+                f"and {restored_symlinks} symlinks in '{restore_dir}'."
+            ),
+        )
+        return
+
     try:
         # Normalise pattern containers (the ingest layer expects sets)
         exclude_patterns = set(exclude_pattern) if exclude_pattern else set()
