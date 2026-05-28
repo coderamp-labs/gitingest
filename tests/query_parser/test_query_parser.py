@@ -251,6 +251,33 @@ async def test_parse_url_with_query_and_fragment(stub_resolve_sha: dict[str, Asy
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("gitingest_url", "expected_url"),
+    [
+        ("https://gitingest.com/github.com/user/repo", "https://github.com/user/repo"),
+        ("gitingest.com/github.com/user/repo", "https://github.com/user/repo"),
+        ("https://gitingest.com/gitlab.com/user/repo", "https://gitlab.com/user/repo"),
+    ],
+)
+async def test_parse_url_gitingest_prefix(
+    gitingest_url: str,
+    expected_url: str,
+    stub_resolve_sha: dict[str, AsyncMock],
+) -> None:
+    """Test that gitingest.com URLs are unwrapped to their underlying git host URL.
+
+    Given a URL like "https://gitingest.com/github.com/user/repo":
+    When ``parse_remote_repo`` is called,
+    Then the gitingest.com prefix should be stripped and the repo resolved from the real host.
+    """
+    query = await parse_remote_repo(gitingest_url)
+
+    assert query.user_name == "user"
+    assert query.repo_name == "repo"
+    assert query.url == expected_url
+
+
+@pytest.mark.asyncio
 async def test_parse_url_unsupported_host(stub_resolve_sha: dict[str, AsyncMock]) -> None:
     """Test ``parse_remote_repo`` with an unsupported host.
 

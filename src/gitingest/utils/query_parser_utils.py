@@ -83,12 +83,16 @@ async def _normalise_source(raw: str, token: str | None) -> ParseResult:
 
     if parsed.scheme:
         _validate_url_scheme(parsed.scheme)
+        if parsed.netloc.lower() == "gitingest.com":
+            return await _normalise_source(parsed.path.lstrip("/"), token)
         _validate_host(parsed.netloc)
         return parsed
 
     # no scheme ('host/user/repo' or 'user/repo')
     host = raw.split("/", 1)[0].lower()
     if "." in host:
+        if host == "gitingest.com":
+            return await _normalise_source(raw.split("/", 1)[1], token)
         _validate_host(host)
         return urlparse(f"https://{raw}")
 
