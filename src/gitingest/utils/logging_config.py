@@ -69,7 +69,7 @@ def format_extra_fields(record: dict) -> str:
         return ""
 
     # Filter out loguru's internal extra fields
-    filtered_extra = {k: v for k, v in record["extra"].items() if not k.startswith("_") and k not in ["name"]}
+    filtered_extra = {k: v for k, v in record["extra"].items() if not k.startswith("_") and k != "name"}
 
     # Handle nested extra structure - if there's an 'extra' key, use its contents
     if "extra" in filtered_extra and isinstance(filtered_extra["extra"], dict):

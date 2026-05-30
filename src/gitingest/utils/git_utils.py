@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Generator, Iterable
 from urllib.parse import urlparse, urlunparse
 
 import git
+import httpx
 
 from gitingest.utils.compat_func import removesuffix
 from gitingest.utils.exceptions import InvalidGitHubTokenError
@@ -139,7 +140,7 @@ async def check_repo_exists(url: str, token: str | None = None) -> bool:
     try:
         # Try to resolve HEAD - if repo exists, this will work
         await _resolve_ref_to_sha(url, "HEAD", token=token)
-    except (ValueError, Exception):
+    except (ValueError, RuntimeError, httpx.RequestError):
         # Repository doesn't exist, is private without proper auth, or other error
         return False
 

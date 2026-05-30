@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from gitingest.utils.compat_func import readlink
+from gitingest.utils.exceptions import InvalidNotebookError
 from gitingest.utils.file_utils import _decodes, _get_preferred_encodings, _read_chunk
 from gitingest.utils.notebook import process_notebook
 
@@ -131,7 +132,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         if self.path.suffix == ".ipynb":  # Notebook
             try:
                 return process_notebook(self.path)
-            except Exception as exc:
+            except (ValueError, OSError, KeyError, InvalidNotebookError) as exc:
                 return f"Error processing notebook: {exc}"
 
         chunk = _read_chunk(self.path)

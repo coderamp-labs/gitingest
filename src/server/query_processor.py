@@ -128,7 +128,7 @@ async def _check_s3_cache(
                 pattern_type=pattern_type,
                 pattern=pattern,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Log the exception but don't fail the entire request
         logger.warning("S3 cache check failed, falling back to normal cloning", extra={"error": str(exc)})
 
@@ -184,7 +184,7 @@ def _store_digest_content(
         try:
             upload_metadata_to_s3(metadata=metadata, s3_file_path=s3_file_path, ingest_id=query.id)
             logger.info("Successfully uploaded metadata to S3")
-        except Exception as metadata_exc:
+        except Exception as metadata_exc:  # noqa: BLE001
             # Log the error but don't fail the entire request
             logger.warning("Failed to upload metadata to S3", extra={"error": str(metadata_exc)})
 
@@ -267,7 +267,7 @@ async def process_query(
 
     try:
         query = await parse_remote_repo(input_text, token=token)
-    except Exception as exc:
+    except (ValueError, RuntimeError) as exc:
         logger.warning("Failed to parse remote repository", extra={"input_text": input_text, "error": str(exc)})
         return IngestErrorResponse(error=str(exc))
 
@@ -304,7 +304,7 @@ async def process_query(
         summary, tree, content = ingest_query(query)
         digest_content = tree + "\n" + content
         _store_digest_content(query, clone_config, digest_content, summary, tree, content)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _print_error(query.url, exc, max_file_size, pattern_type, pattern)
         # Clean up repository even if processing failed
         _cleanup_repository(clone_config)

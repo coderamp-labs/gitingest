@@ -51,7 +51,7 @@ async def _perform_ingestion(
         error_response = IngestErrorResponse(error=f"Validation error: {ve!s}")
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=error_response.model_dump())
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Handle unexpected errors with 500 status code
         error_response = IngestErrorResponse(error=f"Internal server error: {exc!s}")
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=error_response.model_dump())

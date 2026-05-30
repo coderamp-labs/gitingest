@@ -97,9 +97,6 @@ ignore = [  # https://docs.astral.sh/ruff/rules/...
 
     # TODO: fix the following issues:
     "TD003", # missing-todo-link, TODO: add issue links
-    "S108", # hardcoded-temp-file, TODO: replace with tempfile
-    "BLE001", # blind-except, TODO: replace with specific exceptions
-    "FAST003", # fast-api-unused-path-parameter, TODO: fix
 ]
 per-file-ignores = { "tests/**/*.py" = ["S101"] } # Skip the "assert used" warning
 

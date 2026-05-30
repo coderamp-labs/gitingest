@@ -380,7 +380,7 @@ def get_metadata_from_s3(s3_file_path: str) -> S3Metadata | None:
         # Log other errors but don't fail
         logger.warning("Failed to retrieve metadata from S3", extra={"error": str(err)})
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # For any other exception, log and return None
         logger.warning("Unexpected error retrieving metadata from S3", extra={"error": str(exc)})
         return None
@@ -459,7 +459,7 @@ def check_s3_object_exists(s3_file_path: str) -> bool:
             return False
         # Re-raise other errors (permissions, etc.)
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # For any other exception, assume object doesn't exist
         logger.info(
             "S3 object check failed with exception, assuming not found",

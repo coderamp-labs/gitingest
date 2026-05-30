@@ -18,7 +18,7 @@ async def ensure_directory_exists_or_create(path: Path) -> None:
 
     """
     try:
-        path.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
     except OSError as exc:
         msg = f"Failed to create directory {path}: {exc}"
         raise OSError(msg) from exc
