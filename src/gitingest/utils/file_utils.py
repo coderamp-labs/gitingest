@@ -15,6 +15,7 @@ except locale.Error:
     locale.setlocale(locale.LC_ALL, "C")
 
 _CHUNK_SIZE = 1024  # bytes
+_MAX_PARTIAL_CHARACTER_BYTES = 4
 
 
 def _get_preferred_encodings() -> list[str]:
@@ -72,6 +73,6 @@ def _decodes(chunk: bytes, encoding: str) -> bool:
     """
     try:
         chunk.decode(encoding)
-    except UnicodeDecodeError:
-        return False
+    except UnicodeDecodeError as exc:
+        return exc.reason == "unexpected end of data" and len(chunk) - exc.start <= _MAX_PARTIAL_CHARACTER_BYTES
     return True
