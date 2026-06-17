@@ -113,9 +113,12 @@ class InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
 
-        # Find caller from where originated the logged message
-        frame, depth = logging.currentframe(), 2
-        while frame.f_code.co_filename == logging.__file__:
+        # Find caller from where originated the logged message.
+        # Walk up from emit's caller through the stdlib logging frames
+        # until we reach the actual originating frame. depth starts at 1
+        # because .f_back already skips emit's own frame.
+        frame, depth = logging.currentframe().f_back, 1
+        while frame is not None and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
             depth += 1
 
