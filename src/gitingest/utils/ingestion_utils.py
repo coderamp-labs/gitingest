@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from pathspec import PathSpec
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 
@@ -40,7 +41,7 @@ def _should_include(path: Path, base_path: Path, include_patterns: set[str]) -> 
     return spec.match_file(str(rel_path))
 
 
-def _should_exclude(path: Path, base_path: Path, ignore_patterns: set[str]) -> bool:
+def _should_exclude(path: Path, base_path: Path, ignore_patterns: Iterable[str]) -> bool:
     """Return ``True`` if ``path`` matches any of ``ignore_patterns``.
 
     Parameters

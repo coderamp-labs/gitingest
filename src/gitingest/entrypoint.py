@@ -269,7 +269,7 @@ def _apply_gitignores(query: IngestionQuery) -> None:
 
     """
     for fname in (".gitignore", ".gitingestignore"):
-        query.ignore_patterns.update(load_ignore_patterns(query.local_path, filename=fname))
+        query.ignore_patterns = [*query.ignore_patterns, *load_ignore_patterns(query.local_path, filename=fname)]
 
 
 @asynccontextmanager

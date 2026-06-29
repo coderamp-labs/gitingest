@@ -168,7 +168,7 @@ DEFAULT_IGNORE_PATTERNS: set[str] = {
 }
 
 
-def load_ignore_patterns(root: Path, filename: str) -> set[str]:
+def load_ignore_patterns(root: Path, filename: str) -> list[str]:
     """Load ignore patterns from ``filename`` found under ``root``.
 
     The loader walks the directory tree, looks for the supplied ``filename``,
@@ -185,20 +185,20 @@ def load_ignore_patterns(root: Path, filename: str) -> set[str]:
 
     Returns
     -------
-    set[str]
-        A set of ignore patterns extracted from the ``filename`` file found under the ``root`` directory.
+    list[str]
+        Ignore patterns extracted from the ``filename`` file found under the ``root`` directory.
 
     """
-    patterns: set[str] = set()
+    patterns: list[str] = []
 
     for ignore_file in root.rglob(filename):
         if ignore_file.is_file():
-            patterns.update(_parse_ignore_file(ignore_file, root))
+            patterns.extend(_parse_ignore_file(ignore_file, root))
     return patterns
 
 
-def _parse_ignore_file(ignore_file: Path, root: Path) -> set[str]:
-    """Parse an ignore file and return a set of ignore patterns.
+def _parse_ignore_file(ignore_file: Path, root: Path) -> list[str]:
+    """Parse an ignore file and return ignore patterns.
 
     Parameters
     ----------
@@ -209,11 +209,11 @@ def _parse_ignore_file(ignore_file: Path, root: Path) -> set[str]:
 
     Returns
     -------
-    set[str]
-        A set of ignore patterns.
+    list[str]
+        Ignore patterns in file order.
 
     """
-    patterns: set[str] = set()
+    patterns: list[str] = []
 
     # Path of the ignore file relative to the repository root
     rel_dir = ignore_file.parent.relative_to(root)
@@ -235,6 +235,6 @@ def _parse_ignore_file(ignore_file: Path, root: Path) -> set[str]:
                 line = line.lstrip("/")
 
             pattern_body = (base_dir / line).as_posix()
-            patterns.add(f"!{pattern_body}" if negated else pattern_body)
+            patterns.append(f"!{pattern_body}" if negated else pattern_body)
 
     return patterns

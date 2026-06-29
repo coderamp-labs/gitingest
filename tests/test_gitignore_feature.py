@@ -48,6 +48,14 @@ def test_load_gitignore_patterns(tmp_path: Path) -> None:
         assert not pattern.startswith("#")
 
 
+def test_load_gitignore_patterns_preserves_negation_order(tmp_path: Path) -> None:
+    """Test that negated gitignore patterns keep their file order."""
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("*.log\n!important.log\n")
+
+    assert load_ignore_patterns(tmp_path, filename=".gitignore") == ["*.log", "!important.log"]
+
+
 @pytest.mark.asyncio
 async def test_ingest_with_gitignore(repo_path: Path) -> None:
     """Integration test for ``ingest_async()`` respecting ``.gitignore`` rules.
@@ -67,3 +75,21 @@ async def test_ingest_with_gitignore(repo_path: Path) -> None:
     # Now both files should be present.
     assert "This file should be excluded." in content_without_ignore
     assert "This file should be included." in content_without_ignore
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_gitignore_negation(tmp_path: Path) -> None:
+    """Test that later negated gitignore rules can re-include files."""
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("*.log\n!important.log\n")
+
+    ignored_file = tmp_path / "ignored.log"
+    ignored_file.write_text("This log should be ignored.")
+
+    important_file = tmp_path / "important.log"
+    important_file.write_text("This log should be included.")
+
+    _, _, content = await ingest_async(source=str(tmp_path))
+
+    assert "This log should be ignored." not in content
+    assert "This log should be included." in content
