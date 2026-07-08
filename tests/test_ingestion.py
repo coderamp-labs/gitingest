@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
+from gitingest import output_formatter
 from gitingest.ingestion import ingest_query
+from gitingest.schemas import filesystem
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -233,3 +235,47 @@ def test_include_ignore_patterns(
     # check non-presence of non-included directories in structure
     for expected_not_structure_item in pattern_scenario["expected_not_structure"]:
         assert expected_not_structure_item not in structure
+
+
+def test_include_pattern_excludes_symlink_to_directory(
+    temp_directory: Path,
+    sample_query: IngestionQuery,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify directory symlinks are filtered by include patterns."""
+    real_dir = temp_directory / "real_dir"
+    real_dir.mkdir()
+    (real_dir / "real_file.txt").write_text("real content")
+
+    symlink_path = temp_directory / "should_exclude_me"
+    try:
+        symlink_path.symlink_to(real_dir, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        symlink_path.mkdir()
+        # Fall back to simulating a directory symlink on platforms that require symlink privileges.
+        original_is_symlink = type(symlink_path).is_symlink
+
+        def fake_is_symlink(self: Path) -> bool:
+            return self == symlink_path or original_is_symlink(self)
+
+        original_readlink = output_formatter.readlink
+
+        def fake_readlink(path: Path) -> Path:
+            if path == symlink_path:
+                return real_dir
+            return original_readlink(path)
+
+        monkeypatch.setattr(type(symlink_path), "is_symlink", fake_is_symlink)
+        monkeypatch.setattr(output_formatter, "readlink", fake_readlink)
+        monkeypatch.setattr(filesystem, "readlink", fake_readlink)
+
+    sample_query.local_path = temp_directory
+    sample_query.subpath = "/"
+    sample_query.type = None
+    sample_query.include_patterns = {"real_dir/*"}
+
+    _, structure, content = ingest_query(sample_query)
+
+    assert "should_exclude_me" not in structure
+    assert "real_dir/" in structure
+    assert "real_dir/real_file.txt" in content
