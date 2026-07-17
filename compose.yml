@@ -45,7 +45,7 @@ services:
   # Production service configuration
   app:
     <<: *app-base
-    image: ghcr.io/coderamp-labs/gitingest:latest
+    image: ghcr.io/coderamp-labs/gitingest:main
     profiles:
       - prod
     environment:
