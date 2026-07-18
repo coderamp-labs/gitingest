@@ -20,7 +20,7 @@
   <a href="https://github.com/coderamp-labs/gitingest"><img src="https://img.shields.io/github/stars/coderamp-labs/gitingest" alt="GitHub Stars"></a>
   <a href="https://discord.com/invite/zerRaGK9EC"><img src="https://img.shields.io/badge/Discord-Join_chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <br>
-  <a href="https://trendshift.io/repositories/13519"><img src="https://trendshift.io/api/badge/repositories/13519" alt="Trendshift" height="50"></a>
+  <a href="https://trendshift.io/repositories/14818"><img src="https://trendshift.io/api/badge/repositories/14818" alt="Trendshift" height="50"></a>
 </p>
 <!-- markdownlint-enable MD033 -->
 
