@@ -68,7 +68,17 @@ async def parse_remote_repo(source: str, token: str | None = None) -> IngestionQ
     if not path_parts:
         return await _fallback_to_root(query, token=token)
 
-    kind = PathKind(path_parts.pop(0))  # may raise ValueError
+    try:
+        kind = PathKind(path_parts[0])
+    except ValueError:
+        # An unrecognized path kind (e.g. /releases, /wiki, /actions, /commits)
+        # is not a tree/blob we can ingest. Fall back to the repository root
+        # instead of raising, matching how the known-but-unsupported kinds
+        # (issues, pull) are handled below.
+        msg = f"Warning: Unsupported path kind in {url}. Returning repository root."
+        return await _fallback_to_root(query, token=token, warn_msg=msg)
+
+    path_parts.pop(0)
     query.type = kind
 
     # TODO: Handle issues and pull requests

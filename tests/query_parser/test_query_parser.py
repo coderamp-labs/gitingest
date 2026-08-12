@@ -219,6 +219,26 @@ async def test_parse_url_branch_and_commit_distinction(
     assert _is_valid_git_commit_hash(query.commit)
 
 
+@pytest.mark.asyncio
+async def test_parse_url_unsupported_path_kind_falls_back_to_root(
+    stub_resolve_sha: dict[str, AsyncMock],
+) -> None:
+    """Test ``parse_remote_repo`` with an unrecognized path kind.
+
+    Given a valid repository URL whose path kind is not tree/blob/issues/pull
+    (e.g. ".../releases/tag/v1.0"):
+    When ``parse_remote_repo`` is called,
+    Then it should fall back to the repository root instead of raising ValueError.
+    """
+    url = DEMO_URL + "/releases/tag/v1.0"
+
+    query = await parse_remote_repo(url)
+
+    assert query.user_name == "user"
+    assert query.repo_name == "repo"
+    assert query.commit is not None
+
+
 async def test_parse_local_dir_path_uuid_uniqueness() -> None:
     """Test ``parse_local_dir_path`` for unique UUID generation.
 
