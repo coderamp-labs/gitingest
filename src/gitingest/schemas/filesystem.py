@@ -84,6 +84,31 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         self.children.sort(key=_sort_key)
 
     @property
+    def symlink_target(self) -> str:
+        """Return the target of a symlink exactly as it is stored on disk.
+
+        The link is not resolved. An absolute target is reported as absolute and a relative one is
+        reported relative to the symlink's own directory, which is what tells a reader whether the
+        link stays inside the ingested tree.
+
+        Returns
+        -------
+        str
+            The symlink target, with path separators normalized to ``/``.
+
+        Raises
+        ------
+        ValueError
+            If the node is not a symlink.
+
+        """
+        if self.type != FileSystemNodeType.SYMLINK:
+            msg = "Cannot read the symlink target of a non-symlink node"
+            raise ValueError(msg)
+
+        return str(readlink(self.path)).replace(os.sep, "/")
+
+    @property
     def content_string(self) -> str:
         """Return the content of the node as a string, including path and content.
 
@@ -96,7 +121,7 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         parts = [
             SEPARATOR,
             f"{self.type.name}: {str(self.path_str).replace(os.sep, '/')}"
-            + (f" -> {readlink(self.path).name}" if self.type == FileSystemNodeType.SYMLINK else ""),
+            + (f" -> {self.symlink_target}" if self.type == FileSystemNodeType.SYMLINK else ""),
             SEPARATOR,
             f"{self.content}",
         ]
