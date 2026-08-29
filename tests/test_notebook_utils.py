@@ -268,3 +268,40 @@ def test_process_notebook_with_output(write_notebook: WriteNotebookFunc) -> None
 
     assert with_output == expected_combined, "Should include source code and comment-ified output."
     assert without_output == expected_source, "Should include only the source code without output."
+
+
+def test_process_notebook_string_form_output(write_notebook: WriteNotebookFunc) -> None:
+    """Test that plain-string outputs (schema-valid) don't explode into one-character-per-line garbage."""
+    notebook_content = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "execution_count": 1,
+                "metadata": {},
+                "outputs": [
+                    # Schema-valid string forms (nbformat v4 allows both str and list-of-str)
+                    {"output_type": "stream", "name": "stdout", "text": "hello world"},
+                    {
+                        "output_type": "execute_result",
+                        "execution_count": 1,
+                        "data": {"text/plain": "42"},
+                        "metadata": {},
+                    },
+                    # Multi-line string form must split into lines like the list form does
+                    {"output_type": "stream", "name": "stdout", "text": "line1\nline2"},
+                ],
+                "source": ["print('hello world')"],
+            },
+        ],
+        "metadata": {},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+
+    nb_path = write_notebook("string_form.ipynb", notebook_content)
+    result = process_notebook(nb_path, include_output=True)
+
+    assert "#   hello world" in result, "String-form stream output should stay on one line"
+    assert "#   42" in result, "String-form execute_result output should stay on one line"
+    assert "#   line1\n#   line2" in result, "Multi-line string output should split lines like the list form"
+    assert "#   h\n" not in result, "No single-character lines (the bug's signature)"
