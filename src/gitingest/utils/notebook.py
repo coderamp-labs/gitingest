@@ -147,10 +147,12 @@ def _extract_output(output: dict[str, Any]) -> list[str]:
     output_type = output["output_type"]
 
     if output_type == "stream":
-        return output["text"]
+        text = output["text"]
+        return text.splitlines() if isinstance(text, str) else text
 
     if output_type in ("execute_result", "display_data"):
-        return output["data"]["text/plain"]
+        text = output["data"]["text/plain"]
+        return text.splitlines() if isinstance(text, str) else text
 
     if output_type == "error":
         return [f"Error: {output['ename']}: {output['evalue']}"]
