@@ -11,6 +11,28 @@ from gitingest.utils.notebook import process_notebook
 from tests.conftest import WriteNotebookFunc
 
 
+@pytest.mark.parametrize("output_type", ["stream", "execute_result", "display_data"])
+@pytest.mark.parametrize("text", ["hello world", "first\n\n第二行\n", "first\r\nlast"])
+def test_process_notebook_string_output(
+    write_notebook: WriteNotebookFunc,
+    output_type: str,
+    text: str,
+) -> None:
+    """Render string-form notebook outputs as commented lines, not individual characters."""
+    output = {"output_type": output_type}
+    if output_type == "stream":
+        output["text"] = text
+    else:
+        output["data"] = {"text/plain": text}
+    notebook = {"cells": [{"cell_type": "code", "source": ["pass"], "outputs": [output]}]}
+    path = write_notebook("string_output.ipynb", notebook)
+    source = "# Jupyter notebook converted to Python script.\n\npass\n"
+    expected = source + "# Output:\n" + "".join(f"#   {line}\n" for line in text.splitlines())
+
+    assert process_notebook(path) == expected
+    assert process_notebook(path, include_output=False) == source
+
+
 def test_process_notebook_all_cells(write_notebook: WriteNotebookFunc) -> None:
     """Test processing a notebook containing markdown, code, and raw cells.
 
