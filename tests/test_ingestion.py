@@ -233,3 +233,33 @@ def test_include_ignore_patterns(
     # check non-presence of non-included directories in structure
     for expected_not_structure_item in pattern_scenario["expected_not_structure"]:
         assert expected_not_structure_item not in structure
+
+
+def test_ingest_query_single_file_max_file_size_exceeded(temp_directory: Path, sample_query: IngestionQuery) -> None:
+    """Test that ingesting a single file exceeding max_file_size raises ValueError."""
+    file_path = temp_directory / "large_file.txt"
+    file_path.write_text("A" * 500, encoding="utf-8")
+
+    sample_query.local_path = file_path
+    sample_query.subpath = "/"
+    sample_query.type = None
+    sample_query.max_file_size = 50
+
+    with pytest.raises(ValueError, match="exceeds the maximum allowed file size"):
+        ingest_query(sample_query)
+
+
+def test_ingest_query_single_file_within_max_file_size(temp_directory: Path, sample_query: IngestionQuery) -> None:
+    """Test that ingesting a single file within max_file_size succeeds."""
+    file_path = temp_directory / "small_file.txt"
+    file_path.write_text("Hello world", encoding="utf-8")
+
+    sample_query.local_path = file_path
+    sample_query.subpath = "/"
+    sample_query.type = None
+    sample_query.max_file_size = 500
+
+    summary, structure, content = ingest_query(sample_query)
+    assert "File: small_file.txt" in summary
+    assert "small_file.txt" in structure
+    assert "Hello world" in content
