@@ -39,6 +39,6 @@ jobs:
           publish_results: true  # enables the public badge
 
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@df559355d593797519d70b90fc8edd5db049e7a2 # v3.29.9
+        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3.39.1
         with:
           sarif_file: results.sarif
