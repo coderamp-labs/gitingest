@@ -38,7 +38,8 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
     Raises
     ------
     ValueError
-        If the path cannot be found, is not a file, or the file has no content.
+        If the path cannot be found, is not a file, the file has no content, or a single
+        ingested file is larger than the query's ``max_file_size``.
 
     """
     logger.info(
@@ -70,10 +71,26 @@ def ingest_query(query: IngestionQuery) -> tuple[str, str, str]:
 
         relative_path = path.relative_to(query.local_path)
 
+        file_size = path.stat().st_size
+        if file_size > query.max_file_size:
+            logger.warning(
+                "File exceeds the max file size limit",
+                extra={
+                    "file_path": str(path),
+                    "file_size": file_size,
+                    "max_file_size": query.max_file_size,
+                },
+            )
+            msg = (
+                f"File {path.name} is {file_size} bytes, which exceeds the max file size of "
+                f"{query.max_file_size} bytes"
+            )
+            raise ValueError(msg)
+
         file_node = FileSystemNode(
             name=path.name,
             type=FileSystemNodeType.FILE,
-            size=path.stat().st_size,
+            size=file_size,
             file_count=1,
             path_str=str(relative_path),
             path=path,
