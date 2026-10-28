@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, TypedDict
 import pytest
 
 from gitingest.ingestion import ingest_query
+from gitingest.query_parser import parse_local_dir_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -233,3 +234,23 @@ def test_include_ignore_patterns(
     # check non-presence of non-included directories in structure
     for expected_not_structure_item in pattern_scenario["expected_not_structure"]:
         assert expected_not_structure_item not in structure
+
+
+def test_single_file_larger_than_max_file_size_is_rejected(tmp_path: Path) -> None:
+    """A single-file ingestion must honour ``max_file_size`` instead of reading the file.
+
+    Directory ingestion skips files above the limit; ingesting the same file directly used to
+    return its whole content, so the configured limit depended on the shape of the source path.
+    """
+    path = tmp_path / "large.py"
+    path.write_text('print("SIZE_LIMIT_DEMO")\n' * 100, encoding="utf-8")
+    query = parse_local_dir_path(str(path))
+
+    query.max_file_size = 8
+    with pytest.raises(ValueError, match="exceeds the max file size"):
+        ingest_query(query)
+
+    query.max_file_size = 10_000
+    summary, _, content = ingest_query(query)
+    assert "File: large.py" in summary
+    assert "SIZE_LIMIT_DEMO" in content
