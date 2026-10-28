@@ -268,3 +268,36 @@ def test_process_notebook_with_output(write_notebook: WriteNotebookFunc) -> None
 
     assert with_output == expected_combined, "Should include source code and comment-ified output."
     assert without_output == expected_source, "Should include only the source code without output."
+
+
+def test_process_notebook_image_only_output_keeps_cell_sources(
+    write_notebook: WriteNotebookFunc,
+) -> None:
+    """A ``display_data`` output without ``text/plain`` must not drop the notebook's sources.
+
+    A MIME bundle does not have to carry a plain-text rendering; an image-only output used to
+    raise ``KeyError`` and replace the whole notebook with an error message.
+    """
+    notebook_content = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "source": ['print("BEFORE_IMAGE")'],
+                "outputs": [
+                    {
+                        "output_type": "display_data",
+                        "data": {"image/png": "iVBORw0KGgo="},
+                        "metadata": {},
+                    },
+                ],
+            },
+            {"cell_type": "code", "source": ['print("AFTER_IMAGE")']},
+        ],
+    }
+    nb_path = write_notebook("image_only_output.ipynb", notebook_content)
+
+    result = process_notebook(nb_path)
+
+    assert 'print("BEFORE_IMAGE")' in result
+    assert 'print("AFTER_IMAGE")' in result
+    assert "# Output:" not in result

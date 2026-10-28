@@ -120,7 +120,8 @@ def _process_cell(cell: dict[str, Any], *, include_output: bool) -> str | None:
         for output in outputs:
             raw_lines += _extract_output(output)
 
-        cell_str += "\n# Output:\n#   " + "\n#   ".join(raw_lines)
+        if raw_lines:
+            cell_str += "\n# Output:\n#   " + "\n#   ".join(raw_lines)
 
     return cell_str
 
@@ -150,7 +151,9 @@ def _extract_output(output: dict[str, Any]) -> list[str]:
         return output["text"]
 
     if output_type in ("execute_result", "display_data"):
-        return output["data"]["text/plain"]
+        # A MIME bundle does not have to carry a plain-text rendering (an image-only
+        # display_data, for example); such outputs are skipped instead of failing the notebook.
+        return output.get("data", {}).get("text/plain", [])
 
     if output_type == "error":
         return [f"Error: {output['ename']}: {output['evalue']}"]
