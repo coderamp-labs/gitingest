@@ -47,6 +47,55 @@ def is_github_host(url: str) -> bool:
     return hostname.startswith("github.")
 
 
+def sanitize_git_output(text: str | Exception) -> str:
+    """Sanitize sensitive credentials (tokens, basic auth, extraheader) from text.
+
+    Parameters
+    ----------
+    text : str | Exception
+        The text or error to sanitize.
+
+    Returns
+    -------
+    str
+        The sanitized string with sensitive credentials redacted.
+
+    """
+    if text is None:
+        return ""
+    s = str(text)
+    if not s:
+        return s
+
+    # Redact URL credentials: https://user:pass@host or https://token@host
+    s = re.sub(r"(https?://)[^/@\s]+(?::[^/@\s]+)?@", r"\1<redacted>@", s)
+
+    # Redact extraheader Authorization: Basic <base64>
+    s = re.sub(
+        r"(extraheader=Authorization:\s*Basic\s+)[A-Za-z0-9+/=]+",
+        r"\1<redacted>",
+        s,
+        flags=re.IGNORECASE,
+    )
+
+    # Redact Authorization: Basic <base64>
+    s = re.sub(
+        r"(Authorization:\s*Basic\s+)[A-Za-z0-9+/=]+",
+        r"\1<redacted>",
+        s,
+        flags=re.IGNORECASE,
+    )
+
+    # Redact raw GitHub PATs
+    s = re.sub(
+        r"\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})\b",
+        "<redacted_token>",
+        s,
+    )
+
+    return s
+
+
 async def run_command(*args: str) -> tuple[bytes, bytes]:
     """Execute a shell command asynchronously and return (stdout, stderr) bytes.
 
@@ -77,7 +126,9 @@ async def run_command(*args: str) -> tuple[bytes, bytes]:
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-        msg = f"Command failed: {' '.join(args)}\nError: {stderr.decode().strip()}"
+        sanitized_cmd = " ".join(sanitize_git_output(arg) for arg in args)
+        sanitized_err = sanitize_git_output(stderr.decode().strip())
+        msg = f"Command failed: {sanitized_cmd}\nError: {sanitized_err}"
         raise RuntimeError(msg)
 
     return stdout, stderr
@@ -239,8 +290,8 @@ async def fetch_remote_branches_or_tags(url: str, *, ref_type: str, token: str |
             if line.strip() and f"refs/{to_fetch}/" in line
         ]
     except git.GitCommandError as exc:
-        msg = f"Failed to fetch {ref_type} from {url}: {exc}"
-        raise RuntimeError(msg) from exc
+        msg = f"Failed to fetch {ref_type} from {url}: {sanitize_git_output(exc)}"
+        raise RuntimeError(msg) from None
 
 
 def create_git_repo(local_path: str, url: str, token: str | None = None) -> git.Repo:
@@ -421,8 +472,8 @@ async def checkout_partial_clone(config: CloneConfig, token: str | None) -> None
         repo = create_git_repo(config.local_path, config.url, token)
         repo.git.sparse_checkout("set", subpath)
     except git.GitCommandError as exc:
-        msg = f"Failed to configure sparse-checkout: {exc}"
-        raise RuntimeError(msg) from exc
+        msg = f"Failed to configure sparse-checkout: {sanitize_git_output(exc)}"
+        raise RuntimeError(msg) from None
 
 
 async def resolve_commit(config: CloneConfig, token: str | None) -> str:
@@ -490,8 +541,8 @@ async def _resolve_ref_to_sha(url: str, pattern: str, token: str | None = None) 
             raise ValueError(msg)
 
     except git.GitCommandError as exc:
-        msg = f"Failed to resolve {pattern} in {url}:\n{exc}"
-        raise ValueError(msg) from exc
+        msg = f"Failed to resolve {pattern} in {url}:\n{sanitize_git_output(exc)}"
+        raise ValueError(msg) from None
 
     return sha
 
