@@ -142,20 +142,26 @@ class FileSystemNode:  # pylint: disable=too-many-instance-attributes
         if chunk == b"":
             return "[Empty file]"
 
-        if not _decodes(chunk, "utf-8"):
-            return "[Binary file]"
-
-        # Find the first encoding that decodes the sample
-        good_enc: str | None = next(
-            (enc for enc in _get_preferred_encodings() if _decodes(chunk, encoding=enc)),
-            None,
-        )
+        # Check for binary file by looking for null bytes unless it is UTF-16 with BOM
+        if b"\x00" in chunk:
+            if chunk.startswith((b"\xff\xfe", b"\xfe\xff")) and _decodes(chunk, "utf-16"):
+                good_enc: str | None = "utf-16"
+            else:
+                return "[Binary file]"
+        else:
+            # Find the first encoding that decodes the sample
+            good_enc = next(
+                (enc for enc in _get_preferred_encodings() if enc not in ("utf-16", "utf-16le") and _decodes(chunk, encoding=enc)),
+                None,
+            )
 
         if good_enc is None:
-            return "Error: Unable to decode file with available encodings"
+            return "[Binary file]"
 
         try:
             with self.path.open(encoding=good_enc) as fp:
                 return fp.read()
-        except (OSError, UnicodeDecodeError) as exc:
+        except UnicodeDecodeError:
+            return "[Binary file]"
+        except OSError as exc:
             return f"Error reading file with {good_enc!r}: {exc}"
