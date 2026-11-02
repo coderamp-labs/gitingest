@@ -16,6 +16,7 @@ from gitingest.utils.git_utils import (
     git_auth_context,
     is_github_host,
     resolve_commit,
+    sanitize_git_output,
 )
 from gitingest.utils.logging_config import get_logger
 from gitingest.utils.os_utils import ensure_directory_exists_or_create
@@ -112,8 +113,8 @@ async def clone_repo(config: CloneConfig, *, token: str | None = None) -> None:
 
         logger.info("Git clone completed successfully")
     except git.GitCommandError as exc:
-        msg = f"Git clone failed: {exc}"
-        raise RuntimeError(msg) from exc
+        msg = f"Git clone failed: {sanitize_git_output(exc)}"
+        raise RuntimeError(msg) from None
 
     # Checkout the subpath if it is a partial clone
     if partial_clone:
@@ -172,5 +173,5 @@ async def _perform_post_clone_operations(
             repo.git.submodule("update", "--init", "--recursive", "--depth=1")
             logger.debug("Submodules updated successfully")
     except git.GitCommandError as exc:
-        msg = f"Git operation failed: {exc}"
-        raise RuntimeError(msg) from exc
+        msg = f"Git operation failed: {sanitize_git_output(exc)}"
+        raise RuntimeError(msg) from None

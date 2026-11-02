@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+import git
 import pytest
 
 from gitingest.clone import clone_repo
@@ -221,3 +222,36 @@ async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
 
     assert result is True
     mock_resolve.assert_called_once_with("https://github.com/test/repo", "HEAD", token=test_token)
+
+
+@pytest.mark.asyncio
+async def test_clone_repo_redacts_credentials_on_error(mocker: MockerFixture) -> None:
+    """Test that clone_repo redacts credentials from RuntimeError messages upon failure."""
+    token = "ghp_" + "C" * 36
+    clone_config = CloneConfig(
+        url="https://github.com/owner/private-repo",
+        local_path=LOCAL_REPO_PATH,
+    )
+
+    mocker.patch("gitingest.clone.resolve_commit", return_value="abc" * 13)
+    auth_url = f"https://x-oauth-basic:{token}@github.com/owner/private-repo"
+    mock_cmd = mocker.MagicMock()
+    mock_cmd.clone.side_effect = git.GitCommandError(
+        ["git", "clone", auth_url, LOCAL_REPO_PATH],
+        128,
+        b"fatal: Authentication failed",
+    )
+    mocker.patch(
+        "gitingest.clone.git_auth_context",
+        return_value=mocker.MagicMock(
+            __enter__=mocker.MagicMock(return_value=(mock_cmd, auth_url)),
+            __exit__=mocker.MagicMock(return_value=None),
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await clone_repo(clone_config, token=token)
+
+    msg = str(exc_info.value)
+    assert token not in msg
+    assert "https://<redacted>@github.com" in msg

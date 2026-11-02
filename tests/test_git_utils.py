@@ -12,7 +12,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 from gitingest.utils.exceptions import InvalidGitHubTokenError
-from gitingest.utils.git_utils import create_git_auth_header, create_git_repo, is_github_host, validate_github_token
+from gitingest.utils.git_utils import (
+    create_git_auth_header,
+    create_git_repo,
+    is_github_host,
+    run_command,
+    sanitize_git_output,
+    validate_github_token,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -275,3 +282,57 @@ def test_create_git_repo_ignores_non_github_urls(
 
     # Should not configure auth for non-GitHub URLs
     mock_repo.git.config.assert_not_called()
+
+
+def test_sanitize_git_output() -> None:
+    """Test that sanitize_git_output redacts tokens, basic auth, and extraheaders."""
+    token = "ghp_" + "A" * 36
+    fine_grained = "github_pat_" + "a" * 22 + "_" + "b" * 59
+    header = create_git_auth_header(token, "https://github.com/owner/repo")
+
+    # Embedded URL credentials
+    url_with_auth = f"https://x-oauth-basic:{token}@github.com/owner/repo.git"
+    assert sanitize_git_output(url_with_auth) == "https://<redacted>@github.com/owner/repo.git"
+
+    # Config extraheader
+    cmd_with_header = f"git -c {header} clone https://github.com/owner/repo.git"
+    sanitized_cmd = sanitize_git_output(cmd_with_header)
+    assert token not in sanitized_cmd
+    assert "Authorization: Basic <redacted>" in sanitized_cmd
+
+    # Standalone basic auth
+    basic_auth = "Authorization: Basic eC1vYXV0aC1iYXNpYzpnaHBfMTIzNA=="
+    assert sanitize_git_output(basic_auth) == "Authorization: Basic <redacted>"
+
+    # Raw PAT tokens
+    raw_error = f"Authentication failed for {token} and {fine_grained}"
+    sanitized_error = sanitize_git_output(raw_error)
+    assert token not in sanitized_error
+    assert fine_grained not in sanitized_error
+    assert "<redacted_token>" in sanitized_error
+
+    # None or empty
+    assert sanitize_git_output(None) == ""
+    assert sanitize_git_output("") == ""
+
+
+@pytest.mark.asyncio
+async def test_run_command_sanitizes_credentials_on_failure() -> None:
+    """Test that run_command redacts tokens and extraheaders from RuntimeError messages."""
+    token = "ghp_" + "S" * 36
+    header = create_git_auth_header(token, "https://github.com/owner/repo")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await run_command(
+            "git",
+            "-c",
+            header,
+            "clone",
+            f"https://x-oauth-basic:{token}@github.com/nonexistent/repo12345.git",
+            "/tmp/nonexistent-path-for-test",
+        )
+
+    error_msg = str(exc_info.value)
+    assert token not in error_msg
+    assert "Authorization: Basic <redacted>" in error_msg
+    assert "https://<redacted>@github.com" in error_msg
