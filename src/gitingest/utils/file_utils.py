@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import locale
 import platform
 from typing import TYPE_CHECKING
@@ -71,7 +72,8 @@ def _decodes(chunk: bytes, encoding: str) -> bool:
 
     """
     try:
-        chunk.decode(encoding)
-    except UnicodeDecodeError:
+        decoder = codecs.getincrementaldecoder(encoding)("strict")
+        decoder.decode(chunk, final=False)
+    except (UnicodeDecodeError, LookupError):
         return False
     return True
