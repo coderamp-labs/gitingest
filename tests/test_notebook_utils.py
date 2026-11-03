@@ -268,3 +268,33 @@ def test_process_notebook_with_output(write_notebook: WriteNotebookFunc) -> None
 
     assert with_output == expected_combined, "Should include source code and comment-ified output."
     assert without_output == expected_source, "Should include only the source code without output."
+
+
+def test_process_notebook_output_without_text_plain(write_notebook: WriteNotebookFunc) -> None:
+    """Test that display_data and execute_result outputs without text/plain do not crash and preserve all cells."""
+    notebook_content = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "source": ['print("BEFORE_IMAGE")'],
+                "outputs": [
+                    {
+                        "output_type": "display_data",
+                        "data": {
+                            "image/png": "iVBORw0KGgo=",
+                        },
+                    },
+                ],
+            },
+            {
+                "cell_type": "code",
+                "source": ['print("AFTER_IMAGE")'],
+            },
+        ],
+    }
+    nb_path = write_notebook("image_output.ipynb", notebook_content)
+    result = process_notebook(nb_path, include_output=True)
+
+    assert 'print("BEFORE_IMAGE")' in result
+    assert 'print("AFTER_IMAGE")' in result
+    assert "Error processing notebook" not in result
