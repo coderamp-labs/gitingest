@@ -206,6 +206,80 @@ async def test_clone_with_include_submodules(gitpython_mocks: dict) -> None:
 
 
 @pytest.mark.asyncio
+async def test_clone_with_branch_passes_branch_to_git(gitpython_mocks: dict) -> None:
+    """Test that cloning with a branch passes -b to the git clone command.
+
+    Given a valid URL and a specific branch:
+    When ``clone_repo`` is called,
+    Then the clone command should include the branch so --single-branch fetches the correct ref.
+    """
+    clone_config = CloneConfig(url=DEMO_URL, local_path=LOCAL_REPO_PATH, commit=None, branch="feature-branch")
+
+    await clone_repo(clone_config)
+
+    mock_clone_from = gitpython_mocks["clone_from"]
+    mock_clone_from.assert_called_once()
+
+    _, kwargs = mock_clone_from.call_args
+    assert kwargs.get("branch") == "feature-branch", (
+        "clone_from should receive branch='feature-branch' so --single-branch fetches the correct ref"
+    )
+
+
+@pytest.mark.asyncio
+async def test_clone_with_branch_and_token_passes_branch_flag(gitpython_mocks: dict) -> None:
+    """Test that cloning with a branch and token passes -b to git.Git().clone().
+
+    Given a GitHub URL, a token, and a specific branch:
+    When ``clone_repo`` is called,
+    Then the raw git clone args should include -b <branch>.
+    """
+    clone_config = CloneConfig(url=DEMO_URL, local_path=LOCAL_REPO_PATH, commit=None, branch="feature-branch")
+
+    await clone_repo(clone_config, token="ghp_testtoken123")  # noqa: S106
+
+    mock_git_cmd = gitpython_mocks["git_cmd"]
+    mock_git_cmd.clone.assert_called_once()
+
+    clone_args = mock_git_cmd.clone.call_args[0]
+    assert "-b" in clone_args, "clone args should include -b flag"
+    b_index = list(clone_args).index("-b")
+    assert clone_args[b_index + 1] == "feature-branch", "branch name should follow -b flag"
+
+
+@pytest.mark.asyncio
+async def test_clone_with_tag_passes_branch_flag(gitpython_mocks: dict) -> None:
+    """Test that cloning with a tag passes -b to the git clone command."""
+    clone_config = CloneConfig(url=DEMO_URL, local_path=LOCAL_REPO_PATH, commit=None, tag="v1.0.0")
+
+    await clone_repo(clone_config)
+
+    mock_clone_from = gitpython_mocks["clone_from"]
+    mock_clone_from.assert_called_once()
+
+    _, kwargs = mock_clone_from.call_args
+    assert kwargs.get("branch") == "v1.0.0"
+
+
+@pytest.mark.asyncio
+async def test_clone_partial_with_branch_passes_branch_flag(gitpython_mocks: dict) -> None:
+    """Test that partial cloning with a branch passes -b to git.Git().clone()."""
+    clone_config = CloneConfig(
+        url=DEMO_URL, local_path=LOCAL_REPO_PATH, subpath="src/docs", commit=None, branch="feature/branch-with-slash"
+    )
+
+    await clone_repo(clone_config)
+
+    mock_git_cmd = gitpython_mocks["git_cmd"]
+    mock_git_cmd.clone.assert_called_once()
+
+    clone_args = mock_git_cmd.clone.call_args[0]
+    assert "-b" in clone_args
+    b_index = list(clone_args).index("-b")
+    assert clone_args[b_index + 1] == "feature/branch-with-slash"
+
+
+@pytest.mark.asyncio
 async def test_check_repo_exists_with_auth_token(mocker: MockerFixture) -> None:
     """Test ``check_repo_exists`` with authentication token.
 
