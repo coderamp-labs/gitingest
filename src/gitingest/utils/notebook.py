@@ -120,7 +120,8 @@ def _process_cell(cell: dict[str, Any], *, include_output: bool) -> str | None:
         for output in outputs:
             raw_lines += _extract_output(output)
 
-        cell_str += "\n# Output:\n#   " + "\n#   ".join(raw_lines)
+        if raw_lines:
+            cell_str += "\n# Output:\n#   " + "\n#   ".join(raw_lines)
 
     return cell_str
 
@@ -144,16 +145,27 @@ def _extract_output(output: dict[str, Any]) -> list[str]:
         If an unknown output type is encountered.
 
     """
-    output_type = output["output_type"]
+    output_type = output.get("output_type")
 
     if output_type == "stream":
-        return output["text"]
+        text = output.get("text", [])
+        if isinstance(text, str):
+            return [text]
+        return list(text)
 
     if output_type in ("execute_result", "display_data"):
-        return output["data"]["text/plain"]
+        data = output.get("data", {})
+        text_plain = data.get("text/plain")
+        if text_plain is None:
+            return []
+        if isinstance(text_plain, str):
+            return [text_plain]
+        return list(text_plain)
 
     if output_type == "error":
-        return [f"Error: {output['ename']}: {output['evalue']}"]
+        ename = output.get("ename", "")
+        evalue = output.get("evalue", "")
+        return [f"Error: {ename}: {evalue}"]
 
     msg = f"Unknown output type: {output_type}"
     raise ValueError(msg)
