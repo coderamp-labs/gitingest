@@ -298,3 +298,31 @@ def test_process_notebook_output_without_text_plain(write_notebook: WriteNoteboo
     assert 'print("BEFORE_IMAGE")' in result
     assert 'print("AFTER_IMAGE")' in result
     assert "Error processing notebook" not in result
+    assert "# Output:" not in result
+
+
+def test_process_notebook_string_output(write_notebook: WriteNotebookFunc) -> None:
+    """Test notebook outputs where text or text/plain is a single string instead of a list.
+
+    Given a notebook where text is a string rather than list of strings,
+    When ``process_notebook`` is called,
+    Then the output should be properly extracted as full strings.
+    """
+    notebook_content = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "source": ["x = 10"],
+                "outputs": [
+                    {"output_type": "stream", "text": "result stream"},
+                    {"output_type": "execute_result", "data": {"text/plain": "10"}},
+                ],
+            },
+        ],
+    }
+
+    nb_path = write_notebook("string_output.ipynb", notebook_content)
+    result = process_notebook(nb_path, include_output=True)
+
+    assert "result stream" in result
+    assert "10" in result
