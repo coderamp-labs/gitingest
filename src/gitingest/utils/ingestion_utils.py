@@ -33,7 +33,7 @@ def _should_include(path: Path, base_path: Path, include_patterns: set[str]) -> 
     rel_path = _relative_or_none(path, base_path)
     if rel_path is None:  # outside repo → do *not* include
         return False
-    if path.is_dir():  # keep directories so children are visited
+    if path.is_dir() and not path.is_symlink():  # keep directories so children are visited
         return True
 
     spec = PathSpec.from_lines("gitwildmatch", include_patterns)
