@@ -233,3 +233,58 @@ def test_include_ignore_patterns(
     # check non-presence of non-included directories in structure
     for expected_not_structure_item in pattern_scenario["expected_not_structure"]:
         assert expected_not_structure_item not in structure
+
+
+def test_symlink_include_exclude_filtering(tmp_path: Path, sample_query: IngestionQuery) -> None:
+    """Test that symlinks pointing to directories respect include and ignore filters.
+
+    Ensures that symlinks pointing to directories are not unconditionally included
+    as traversable directories when an include filter is applied (#585).
+    """
+    repo_dir = tmp_path / "test_symlink_repo"
+    repo_dir.mkdir()
+
+    packages_dir = repo_dir / "packages"
+    packages_dir.mkdir()
+
+    golang_dir = packages_dir / "golang"
+    golang_dir.mkdir()
+    (golang_dir / "main.go").write_text("package main")
+
+    hledger_dir = packages_dir / "hledger-ui"
+    hledger_dir.mkdir()
+
+    target_dir = repo_dir / "splitmix-patches"
+    target_dir.mkdir()
+    (target_dir / "patch.diff").write_text("diff content")
+
+    # Create symlinks pointing to directories
+    symlink_outside = hledger_dir / "splitmix-patches"
+    symlink_outside.symlink_to(target_dir)
+
+    symlink_inside = golang_dir / "patches-link"
+    symlink_inside.symlink_to(target_dir)
+
+    # 1. Test include filter: only packages/golang/
+    sample_query.local_path = repo_dir
+    sample_query.subpath = "/"
+    sample_query.type = None
+    sample_query.include_patterns = {"packages/golang/"}
+    sample_query.ignore_patterns = set()
+
+    summary, structure, content = ingest_query(sample_query)
+
+    assert "packages/golang/main.go" in content
+    assert "packages/golang/patches-link" in content
+    assert "packages/hledger-ui/splitmix-patches" not in content
+    assert "hledger-ui" not in structure
+
+    # 2. Test ignore filter: exclude patches-link symlink
+    sample_query.include_patterns = set()
+    sample_query.ignore_patterns = {"**/patches-link"}
+
+    summary, structure, content = ingest_query(sample_query)
+
+    assert "packages/golang/patches-link" not in content
+    assert "patches-link" not in structure
+
