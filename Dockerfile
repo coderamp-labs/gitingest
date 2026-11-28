@@ -1,5 +1,5 @@
 # Stage 1: Install Python dependencies
-FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419 AS python-builder
+FROM python:3.15.2-slim@sha256:08a4c22c92b79ec821a7ad49768480039ee5b7accac3955228e75366e30abc8e AS python-builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ RUN set -eux; \
     pip install --no-cache-dir --timeout 1000 .[server,mcp]
 
 # Stage 2: Runtime image
-FROM python:3.13.5-slim@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419
+FROM python:3.15.2-slim@sha256:08a4c22c92b79ec821a7ad49768480039ee5b7accac3955228e75366e30abc8e
 
 ARG UID=1000
 ARG GID=1000
